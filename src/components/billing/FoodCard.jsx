@@ -1,4 +1,4 @@
 import {Plus} from 'lucide-react'
-import Button from '../ui/Button'
-import {money} from '../../data/demo'
+import Button from '@/components/ui/Button'
+import {money} from '@/lib/format'
 export default function FoodCard({food,onAdd}) { return <div className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:shadow-md"><div className="mb-3 grid h-24 place-items-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-100 text-3xl">🍽️</div><div className="font-bold text-slate-900">{food.name}</div><div className="mt-1 text-xs text-slate-500">{food.category}</div><div className="mt-3 flex flex-wrap gap-1">{food.variants.map(v=><button key={v.name} onClick={()=>onAdd(food,v)} className="rounded-lg border border-orange-200 px-2 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-50">{v.name} · {money(v.price)}</button>)}</div></div> }

@@ -1,6 +1,6 @@
 import {Trash2,Minus,Plus} from 'lucide-react'
-import Button from '../ui/Button'
-import {money} from '../../data/demo'
+import Button from '@/components/ui/Button'
+import {money} from '@/lib/format'
 export default function BillingCart({items,setItems,onGenerate}) {
  const subtotal=items.reduce((s,x)=>s+x.price*x.qty,0)
  const change=(i,d)=>setItems(items.map((x,n)=>n===i?{...x,qty:Math.max(1,x.qty+d)}:x))

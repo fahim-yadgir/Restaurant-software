@@ -1,76 +1,117 @@
 import { useEffect, useMemo, useState } from 'react'
-import AppLayout from '../components/layout/AppLayout'
-import LoginPage from '../pages/LoginPage'
-import SetupPage from '../pages/SetupPage'
-import DashboardPage from '../pages/DashboardPage'
-import BillingPage from '../pages/BillingPage'
-import MenuPage from '../pages/MenuPage'
-import ExpensesPage from '../pages/ExpensesPage'
-import StaffPage from '../pages/StaffPage'
-import ReportsPage from '../pages/ReportsPage'
-import DaybookPage from '../pages/DaybookPage'
-import SettingsPage from '../pages/SettingsPage'
-import AdminPage from '../pages/AdminPage'
-import SubscriptionPage from '../pages/SubscriptionPage'
-import { initialFoods, initialExpenses, initialStaff } from '../data/demo'
-import { readLocal, writeLocal } from '../services/localStore'
-import { createLicense, getLicenseStatus, renewDemoLicense } from '../services/license'
+import AdminRoutes, { ADMIN_PATHS } from '@/app/AdminRoutes'
+import OwnerRoutes from '@/app/OwnerRoutes'
+import AdminLoginPage from '@/pages/auth/AdminLoginPage'
+import LoginPage from '@/pages/auth/LoginPage'
+import SetupPage from '@/pages/setup/SetupPage'
+import SubscriptionPage from '@/pages/subscription/SubscriptionPage'
+import usePersistentState from '@/hooks/usePersistentState'
+import useTrustedClock from '@/hooks/useTrustedClock'
+import { readLocal } from '@/lib/localStore'
+import { buildLicense, getLicenseStatus, syncLicenseFromRegistry, trustedNow } from '@/lib/license'
+import {
+  DAY_MS, REGISTRY_KEY, createRestaurantRecord, generatePassword, hashPassword,
+  normalizeCode, randomSalt, renewRecord,
+} from '@/lib/registry'
 
-const KEYS = { setup: 'rd_setup_complete', role: 'rd_role', foods: 'rd_foods', expenses: 'rd_expenses', staff: 'rd_staff', bills: 'rd_bills', license: 'rd_license' }
+const KEYS = { role: 'rd_role', license: 'rd_license', adminSession: 'rd_admin_session' }
 
+function go(path, replace = false) {
+  window.history[replace ? 'replaceState' : 'pushState']({}, '', path)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+// App = shared state + the gates every visitor passes through:
+//   /admin/*  → admin login → AdminRoutes
+//   otherwise → activation (SetupPage) → subscription check → owner login → OwnerRoutes
 export default function App() {
-  const [setupDone, setSetupDone] = useState(() => localStorage.getItem(KEYS.setup) === 'true')
-  const [role, setRole] = useState(() => localStorage.getItem(KEYS.role) || '')
-  const [page, setPage] = useState('dashboard')
-  const [foods, setFoods] = useState(() => readLocal(KEYS.foods, initialFoods))
-  const [expenses, setExpenses] = useState(() => readLocal(KEYS.expenses, initialExpenses))
-  const [staff, setStaff] = useState(() => readLocal(KEYS.staff, initialStaff))
-  const [bills, setBills] = useState(() => readLocal(KEYS.bills, []))
-  const [license, setLicense] = useState(() => readLocal(KEYS.license, null))
-  const [now, setNow] = useState(Date.now())
+  const [path, setPath] = useState(window.location.pathname)
+  const [role, setRole] = useState(() => (localStorage.getItem(KEYS.role) === 'owner' ? 'owner' : ''))
+  const [isAdmin, setIsAdmin] = useState(() => sessionStorage.getItem(KEYS.adminSession) === 'true')
+  const [registry, setRegistry] = usePersistentState(REGISTRY_KEY, [])
+  // Licenses from the old demo build have no restaurantId, so they are ignored and setup runs again.
+  const [license, setLicense] = usePersistentState(KEYS.license, null, (saved) => (saved?.restaurantId ? saved : null))
+  const now = useTrustedClock()
 
-  useEffect(() => { writeLocal(KEYS.foods, foods) }, [foods])
-  useEffect(() => { writeLocal(KEYS.expenses, expenses) }, [expenses])
-  useEffect(() => { writeLocal(KEYS.staff, staff) }, [staff])
-  useEffect(() => { writeLocal(KEYS.bills, bills) }, [bills])
-  useEffect(() => { writeLocal(KEYS.license, license) }, [license])
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname)
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+  // Keep the registry in step when the admin and the restaurant are open in two tabs.
+  useEffect(() => {
+    const onStorage = (event) => { if (event.key === REGISTRY_KEY) setRegistry(readLocal(REGISTRY_KEY, [])) }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [setRegistry])
+  // Pull renewals and password resets made by the admin into this device's license.
+  useEffect(() => {
+    const synced = syncLicenseFromRegistry(license, registry)
+    if (synced !== license) setLicense(synced)
+  }, [registry, license, setLicense])
+  useEffect(() => { if (isAdmin && path === ADMIN_PATHS.login) go(ADMIN_PATHS.adminOverview, true) }, [isAdmin, path])
 
+  const setupDone = !!license?.restaurantId
   const licenseStatus = useMemo(() => getLicenseStatus(license, now), [license, now])
-  const completeSetup = (details) => {
-    const newLicense = createLicense(details)
-    setLicense(newLicense)
-    setSetupDone(true)
-    localStorage.setItem(KEYS.setup, 'true')
+
+  // ---- Platform admin actions ----
+  const adminLogin = () => { sessionStorage.setItem(KEYS.adminSession, 'true'); setIsAdmin(true); go(ADMIN_PATHS.adminOverview) }
+  const adminLogout = () => { sessionStorage.removeItem(KEYS.adminSession); setIsAdmin(false); go(ADMIN_PATHS.login) }
+  const navigateAdmin = (key) => go(ADMIN_PATHS[key === 'adminPlans' ? 'adminPlans' : 'adminOverview'])
+
+  const createRestaurant = async (form) => {
+    const record = await createRestaurantRecord(form, registry)
+    setRegistry((old) => [record, ...old])
+    return record
   }
-  const login = (selectedRole) => {
-    setRole(selectedRole)
-    localStorage.setItem(KEYS.role, selectedRole)
-    setPage(selectedRole === 'admin' ? 'admin' : 'dashboard')
+  const renewRestaurant = (id, days) => setRegistry((old) => old.map((r) => (r.id === id ? renewRecord(r, days, trustedNow()) : r)))
+  const resetPassword = async (id) => {
+    const password = generatePassword()
+    const salt = randomSalt()
+    const passwordHash = await hashPassword(password, salt)
+    setRegistry((old) => old.map((r) => (r.id === id ? { ...r, salt, passwordHash } : r)))
+    return password
   }
-  const logout = () => {
-    setRole('')
-    localStorage.removeItem(KEYS.role)
+  const deleteRestaurant = (id) => setRegistry((old) => old.filter((r) => r.id !== id || r.activatedAt)) // activated restaurants cannot be deleted
+
+  // ---- Restaurant activation ----
+  const lookupActivation = (rawCode) => {
+    const code = normalizeCode(rawCode)
+    if (!code) return { error: 'Enter the activation code.' }
+    const restaurant = registry.find((r) => r.code === code)
+    if (!restaurant) return { error: 'Activation code not found. Check the code with the software owner.' }
+    if (restaurant.activatedAt) return { error: 'This activation code has already been used.' }
+    return { restaurant }
   }
-  const renew = () => {
-    const updated = renewDemoLicense(license)
-    setLicense(updated)
+  const activateRestaurant = (id) => {
+    const record = registry.find((r) => r.id === id)
+    if (!record || record.activatedAt) return false
+    const activatedAt = trustedNow()
+    const activated = { ...record, activatedAt, expiresAt: activatedAt + record.durationDays * DAY_MS }
+    setRegistry((old) => old.map((r) => (r.id === id ? activated : r)))
+    setLicense(buildLicense(activated))
+    go('/login')
+    return true
   }
 
-  if (!setupDone) return <SetupPage onComplete={completeSetup} />
-  if (!role) return <LoginPage onLogin={login} />
-  if (role === 'owner' && licenseStatus.expired) return <SubscriptionPage license={license} onRenew={renew} />
-  let content
-  if (role === 'admin') content = <AdminPage />
-  else switch (page) {
-    case 'billing': content = <BillingPage foods={foods} onSaveBill={bill => setBills(old => [bill, ...old])} />; break
-    case 'menu': content = <MenuPage foods={foods} setFoods={setFoods} />; break
-    case 'expenses': content = <ExpensesPage expenses={expenses} setExpenses={setExpenses} />; break
-    case 'staff': content = <StaffPage staff={staff} setStaff={setStaff} />; break
-    case 'reports': content = <ReportsPage bills={bills} expenses={expenses} />; break
-    case 'daybook': content = <DaybookPage bills={bills} expenses={expenses} />; break
-    case 'settings': content = <SettingsPage />; break
-    default: content = <DashboardPage bills={bills} expenses={expenses} />
+  // ---- Restaurant owner actions ----
+  const ownerLogin = () => { setRole('owner'); localStorage.setItem(KEYS.role, 'owner'); go('/dashboard') }
+  const ownerLogout = () => { setRole(''); localStorage.removeItem(KEYS.role); go('/login') }
+  const checkRenewal = () => {
+    const fresh = readLocal(REGISTRY_KEY, [])
+    setRegistry(fresh)
+    const synced = syncLicenseFromRegistry(license, fresh)
+    if (synced !== license) setLicense(synced)
+    return !getLicenseStatus(synced, trustedNow()).expired
   }
-  return <AppLayout page={role === 'admin' ? 'admin' : page} setPage={setPage} role={role} onLogout={logout} licenseStatus={licenseStatus}>{content}</AppLayout>
+
+  if (path === '/admin' || path.startsWith('/admin/')) {
+    if (!isAdmin) return <AdminLoginPage onLogin={adminLogin} />
+    return <AdminRoutes path={path} registry={registry} now={now} onNavigate={navigateAdmin} onLogout={adminLogout}
+      onCreate={createRestaurant} onRenew={renewRestaurant} onResetPassword={resetPassword} onDelete={deleteRestaurant} />
+  }
+  if (!setupDone) return <SetupPage onLookup={lookupActivation} onActivate={activateRestaurant} />
+  if (licenseStatus.expired) return <SubscriptionPage license={license} onCheckRenewal={checkRenewal} />
+  if (role !== 'owner') return <LoginPage license={license} onLogin={ownerLogin} />
+  return <OwnerRoutes license={license} licenseStatus={licenseStatus} onLogout={ownerLogout} />
 }

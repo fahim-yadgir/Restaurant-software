@@ -1,69 +1,98 @@
-# RestroDesk POS
+# RestroDesk POS — Restaurant Billing & Subscription Platform (Frontend)
 
-React + Vite restaurant POS frontend, organized for future growth and designed to keep daily operations local-first.
+A local-first restaurant POS. The **Platform Admin** (software owner) registers restaurants and issues activation codes; each **Restaurant Owner** activates the app once, then runs billing, menu, expenses, staff and reports offline until the subscription expires.
+
+> **Status: frontend prototype.** There is no backend or desktop shell yet. Everything (restaurant registry, device license, menu, bills, expenses, staff) lives in browser `localStorage`. Auth and licensing are demo-grade. See [Known limitations](#known-limitations).
+
+## 1. Current technology stack
+| Layer | Technology |
+|---|---|
+| Frontend | React.js 18 |
+| Build tool | Vite 6 |
+| Programming language | JavaScript (JSX) |
+| Styling | Tailwind CSS 3 |
+| Icons | Lucide React |
+| Charts | Recharts |
+| Local data storage | Browser LocalStorage |
+| Offline caching | Service Worker |
+| Package manager | npm |
+
+## 2. Planned backend and desktop stack
+Recommended for the full offline-first product. **Not implemented yet** (`electron/` and `server/` hold the plan only).
+| Layer | Recommended technology |
+|---|---|
+| Desktop application | Electron |
+| Local database | SQLite |
+| Backend API | Node.js + Express.js |
+| Online database | PostgreSQL |
+| Authentication | Server-side authentication |
 
 ## Run
 ```bash
 npm install
-npm run dev
-```
-Build and preview:
-```bash
+npm run dev        # http://localhost:5173
 npm run build
 npm run preview
 ```
+Imports use the `@` alias for `src/` (e.g. `import Button from '@/components/ui/Button'`), configured in `vite.config.js` and `jsconfig.json`.
 
-## First-run demo setup
-1. Open the app while connected to the internet.
-2. Complete the restaurant setup form.
-3. Demo activation code: `RD-DEMO-365`.
-4. Sign in using the demo login screen (Owner or Software Admin; any non-empty password).
-5. Owner operations are stored in this browser's localStorage and can run without a network connection after the app has been loaded/cached.
+## Roles
+| Role | Who | Login | Home |
+|---|---|---|---|
+| Platform Admin | Software owner | `/admin/login` (demo: `admin@restrodesk.com` / `demo123`) | `/admin` |
+| Restaurant Owner | Owns one restaurant | `/` → activate → sign in with registered email/mobile + password | owner dashboard |
 
-The demo license lasts 365 days from setup. The app displays a live days/hours/minutes/seconds countdown. When it expires, owner operations are locked and the user is asked to contact the software owner. The demo renewal action restarts the 365-day period.
+Each role has its own route module (`src/app/AdminRoutes.jsx`, `src/app/OwnerRoutes.jsx`). `src/app/App.jsx` holds the shared state and the gates (admin login, activation, subscription check, owner login).
 
-## Current limitations — read before commercial use
-This ZIP is a frontend demo, not a production-ready offline desktop POS:
-- Login is currently demo/local UI, not secure server authentication.
-- The activation code is hard-coded for demonstration. No real online activation or renewal API is connected.
-- License dates are stored in browser localStorage. Users can manipulate browser storage or the device clock; this is not secure licensing.
-- Business data uses browser localStorage, not SQLite. It is tied to this browser profile and can be cleared.
-- The service worker caches the app shell/assets for offline reopening after the first successful online load. Browser storage limits and cache eviction still apply.
-- To ship a robust Windows offline application, package with Electron or Tauri and use SQLite for local data. Keep network requests limited to authentication, first activation, and renewal. The licensing server should issue a cryptographically signed license, with device binding, trusted-time/rollback checks, and server-side renewal validation.
-- Before deployment, add real backend endpoints for login, setup/activation, and renewal. Never rely on a frontend-only password, activation code, or timer for commercial access control.
+### Pages per role
+- **Admin** — Overview, Restaurants & Plans (register, renew, reset password, delete if not activated)
+- **Owner** — Dashboard, Billing, Menu & GST, Expenses, Staff, Reports, Daybook, Settings (restaurant, owner and subscription details)
+
+## Workflow (end to end)
+1. **Admin registers a restaurant** — restaurant name, owner name, mobile, email, subscription duration, owner password → a unique activation code `RD-XXXX-XXXX` is generated. *Copy details to send* prepares the message for the owner.
+2. **Restaurant activates** — enters the code → the registered restaurant and owner details are shown → on confirm the subscription countdown starts (duration set by the admin).
+3. **Owner signs in** with the registered email or mobile and password (checked against the device license, so it works offline). The remaining time shows in the top bar and Settings; a banner appears in the last 7 days.
+4. **Expiry** — operational screens lock, saved data is preserved, and the owner sees the contact details from `src/lib/appConfig.js`. After the admin renews, the owner taps *Check for renewal*. There is no self-renew.
 
 ## Project structure
-```text
-src/
-  app/
-    App.jsx
-  components/
-    billing/
-    dashboard/
-    layout/
-    menu/
-    ui/
-  data/
-    demo.js
-  pages/
-    AdminPage.jsx
-    BillingPage.jsx
-    DashboardPage.jsx
-    DaybookPage.jsx
-    ExpensesPage.jsx
-    LoginPage.jsx
-    MenuPage.jsx
-    ReportsPage.jsx
-    SettingsPage.jsx
-    SetupPage.jsx
-    StaffPage.jsx
-    SubscriptionPage.jsx
-  services/
-    license.js
-    localStore.js
-  styles/
-    index.css
-  main.jsx
-public/
-  sw.js
 ```
+src/
+  app/          App.jsx (state + gates), AdminRoutes.jsx, OwnerRoutes.jsx
+  pages/
+    admin/        OverviewPage, RestaurantsPage
+    auth/         LoginPage (owner), AdminLoginPage
+    setup/        SetupPage (activation)
+    subscription/ SubscriptionPage (expired / locked)
+    owner/        Dashboard, Billing, Menu, Expenses, Staff, Reports, Daybook, Settings
+  components/
+    ui/           Button, Field, Badge, CopyButton
+    layout/       AppLayout, Sidebar, Topbar
+    admin/        RestaurantRow, StatusBadge
+    billing/ dashboard/ menu/   owner-side components
+  lib/          registry.js (restaurants, codes, password hashing, status), license.js (device license, trusted clock),
+                localStore.js, appConfig.js (support contacts, plan durations), format.js, demoData.js
+  hooks/        usePersistentState, useOnlineStatus, useTrustedClock
+  features/     future feature modules (see features/README.md)
+  styles/       index.css
+public/sw.js    service worker (offline app shell)
+electron/       planned desktop shell (README only)
+server/         planned Express + PostgreSQL API (README only)
+TESTING.md      manual test checklist
+```
+
+### Storage keys
+`rd_registry` (admin's restaurant records) · `rd_license` (this device's license + owner login hash) · `rd_role` (owner session) · `rd_admin_session` (sessionStorage, admin) · `rd_last_seen` (clock rollback guard) · `rd_foods`, `rd_expenses`, `rd_staff`, `rd_bills` (restaurant data). Clear these to reset the demo.
+
+## Known limitations
+- The registry and the license are in the same browser's localStorage, so admin and restaurant must use the **same browser profile** for activation to find the code. Separate computers need the backend in `server/`.
+- Admin login is hard-coded. Owner passwords are salted SHA-256 hashes in the browser: demo-grade only.
+- Clearing browser storage or editing it resets or alters a license. Production needs a server-signed license. A PC clock set backwards is ignored (`trustedNow()`), nothing more.
+- Business data is in localStorage, not SQLite, and is tied to the browser profile.
+- Payments, invoice PDF export and printing beyond the browser dialog are not implemented.
+- No automated tests are included; follow `TESTING.md`.
+
+## Next steps
+1. Build `server/` (Express + PostgreSQL): admin auth, restaurants, activation, renewal, owner login, signed licenses.
+2. Wrap the app in Electron (`electron/`) and move restaurant data from localStorage to SQLite.
+3. Replace the functions in `src/lib/registry.js` and the activation/renewal handlers in `src/app/App.jsx` with API calls.
+4. Add payments, invoice PDF export and automated tests.

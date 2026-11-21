@@ -1,7 +1,7 @@
 import {useState} from 'react'
 import {Plus,Image as ImageIcon} from 'lucide-react'
-import FoodForm from '../components/menu/FoodForm'
-import Badge from '../components/ui/Badge'
-import Button from '../components/ui/Button'
-import {money} from '../data/demo'
+import FoodForm from '@/components/menu/FoodForm'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import {money} from '@/lib/format'
 export default function MenuPage({foods,setFoods}) { const [show,setShow]=useState(false); return <div className="space-y-5"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-display text-xl font-extrabold">Menu master</h2><p className="mt-1 text-sm text-slate-500">Manage dishes, categories, portion prices, GST and availability.</p></div><Button onClick={()=>setShow(!show)}><Plus size={16}/> Add new dish</Button></div>{show&&<FoodForm onAdd={f=>{setFoods([...foods,{...f,id:Date.now()}]);setShow(false)}}/>}<div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{['Item name','Category','Portion pricing','GST slab','Status','Action'].map(x=><th key={x} className="px-5 py-4">{x}</th>)}</tr></thead><tbody>{foods.map(f=><tr key={f.id} className="border-t border-slate-100"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-orange-50 text-orange-500"><ImageIcon size={17}/></div><b>{f.name}</b></div></td><td className="px-5 py-4 text-slate-500">{f.category}</td><td className="px-5 py-4">{f.variants.map(v=><span key={v.name} className="mr-2 inline-block text-xs">{v.name}: <b>{money(v.price)}</b></span>)}</td><td className="px-5 py-4">{f.gst}%</td><td className="px-5 py-4"><Badge tone={f.active?'green':'red'}>{f.active?'Active':'Inactive'}</Badge></td><td className="px-5 py-4"><button onClick={()=>setFoods(foods.map(x=>x.id===f.id?{...x,active:!x.active}:x))} className="text-xs font-bold text-orange-600">{f.active?'Disable':'Enable'}</button></td></tr>)}</tbody></table></div></div><p className="text-xs text-slate-500">You can configure custom sizes such as Small, Half, Full, Large or Piece in the production menu editor.</p></div> }

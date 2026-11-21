@@ -16,4 +16,3 @@ export const initialStaff = [
   {id:2,name:'Amit Patil',role:'Waiter',mobile:'9876543211',salary:9000},
   {id:3,name:'Neha Singh',role:'Cashier',mobile:'9876543212',salary:12000},
 ]
-export const money = n => new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:2}).format(Number(n||0))
