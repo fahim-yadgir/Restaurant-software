@@ -4,7 +4,7 @@ import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
 import { hashPassword, normalizeEmail, normalizeMobile } from '@/lib/registry'
 
-export default function LoginPage({ license, onLogin }) {
+export default function LoginPage({ license, onLogin, onActivateDifferent }) {
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -20,6 +20,10 @@ export default function LoginPage({ license, onLogin }) {
     setBusy(false)
     if (!id || !password || !matchesId || hash !== license.passwordHash) { setError('Incorrect email / mobile or password.'); return }
     setError(''); onLogin()
+  }
+
+  const switchRestaurant = () => {
+    if (window.confirm(`Remove ${license.restaurantName} from this computer and activate a different restaurant?\n\nThe activation code of ${license.restaurantName} will not work again. Use this only for a new restaurant.`)) onActivateDifferent()
   }
 
   return <div className="grid min-h-screen lg:grid-cols-2">
@@ -38,6 +42,7 @@ export default function LoginPage({ license, onLogin }) {
         <Button type="submit" disabled={busy} className="w-full py-3">Sign in to Counter POS</Button>
       </div>
       <div className="mt-6 rounded-xl bg-blue-50 p-4 text-xs leading-5 text-blue-800"><ShieldCheck className="mb-1" size={16}/> Forgot your password? Ask the software owner to reset it.</div>
+      <button type="button" onClick={switchRestaurant} className="mt-4 w-full text-center text-sm font-semibold text-orange-600 hover:underline">Not {license.restaurantName}? Activate a different restaurant</button>
     </form></div>
   </div>
 }

@@ -97,6 +97,12 @@ export default function App() {
   // ---- Restaurant owner actions ----
   const ownerLogin = () => { setRole('owner'); localStorage.setItem(KEYS.role, 'owner'); go('/dashboard') }
   const ownerLogout = () => { setRole(''); localStorage.removeItem(KEYS.role); go('/login') }
+  // Lets a device switch to another restaurant. The saved license is removed; the restaurant's old code stays "used".
+  const activateDifferentRestaurant = () => {
+    setRole(''); localStorage.removeItem(KEYS.role)
+    setLicense(null)
+    go('/')
+  }
   const checkRenewal = () => {
     const fresh = readLocal(REGISTRY_KEY, [])
     setRegistry(fresh)
@@ -112,6 +118,6 @@ export default function App() {
   }
   if (!setupDone) return <SetupPage onLookup={lookupActivation} onActivate={activateRestaurant} />
   if (licenseStatus.expired) return <SubscriptionPage license={license} onCheckRenewal={checkRenewal} />
-  if (role !== 'owner') return <LoginPage license={license} onLogin={ownerLogin} />
+  if (role !== 'owner') return <LoginPage license={license} onLogin={ownerLogin} onActivateDifferent={activateDifferentRestaurant} />
   return <OwnerRoutes license={license} licenseStatus={licenseStatus} onLogout={ownerLogout} />
 }

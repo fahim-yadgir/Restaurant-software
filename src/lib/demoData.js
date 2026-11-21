@@ -16,3 +16,11 @@ export const initialStaff = [
   {id:2,name:'Amit Patil',role:'Waiter',mobile:'9876543211',salary:9000},
   {id:3,name:'Neha Singh',role:'Cashier',mobile:'9876543212',salary:12000},
 ]
+export const initialPigmy = [
+  {id:'pg-1',bankName:'State Bank of India',accountName:'Restaurant Owner',accountNumber:'30012345678',dailyAmount:500,startDate:'2026-11-19',expireDate:'2027-11-18',expectedAmount:182500,note:'Daily counter cash deposit',status:'Active'},
+]
+export const initialPigmyEntries = [
+  {id:'pe-1',accountId:'pg-1',date:'2026-11-19',type:'deposit',amount:500,note:'Daily pigmy deposit'},
+  {id:'pe-2',accountId:'pg-1',date:'2026-11-20',type:'deposit',amount:500,note:'Daily pigmy deposit'},
+  {id:'pe-3',accountId:'pg-1',date:'2026-11-21',type:'deposit',amount:500,note:'Daily pigmy deposit'},
+]
