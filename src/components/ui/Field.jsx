@@ -1,0 +1,3 @@
+export default function Field({label,value,onChange,placeholder='',type='text',...props}) {
+ return <label className="block space-y-1.5"><span className="text-xs font-semibold text-slate-600">{label}</span><input type={type} value={value} onChange={e=>onChange?.(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100" {...props}/></label>
+}
