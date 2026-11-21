@@ -4,5 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } }, // "@/lib/..." = "src/lib/..."
+  base: '/',
+  resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
+  build: {
+    outDir: 'dist',
+    assetsDir: 'assets',
+  },
 })
