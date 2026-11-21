@@ -1,4 +1,7 @@
-import {WifiOff,Bell,Search} from 'lucide-react'
-export default function Topbar({title,subtitle='Restaurant management workspace'}) {
- return <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between border-b border-slate-200/80 bg-white/90 px-8 backdrop-blur"><div><h1 className="font-display text-xl font-extrabold text-slate-900">{title}</h1><p className="mt-0.5 text-xs text-slate-500">{subtitle}</p></div><div className="flex items-center gap-3"><div className="hidden items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-500 md:flex"><Search size={14}/> Search workspace</div><span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700"><WifiOff size={14}/> Offline mode</span><button className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><Bell size={18}/></button><div className="grid h-9 w-9 place-items-center rounded-full bg-orange-100 text-xs font-bold text-orange-700">SG</div></div></header>
+import { WifiOff, Bell, CalendarClock } from 'lucide-react'
+export default function Topbar({ title, licenseStatus }) {
+  const active = licenseStatus && !licenseStatus.expired
+  return <header className="app-topbar"><div className="topbar-title"><h1>{title}</h1><p>Restaurant management workspace</p></div>
+    <div className="topbar-actions">{active && <span className="plan-countdown" title="Time remaining on this demo license"><CalendarClock size={14}/><span>{licenseStatus.days}d {String(licenseStatus.hours).padStart(2,'0')}:{String(licenseStatus.minutes).padStart(2,'0')}:{String(licenseStatus.seconds).padStart(2,'0')}</span></span>}<span className="offline-pill"><WifiOff size={14}/> Offline mode</span><button className="icon-button" aria-label="Notifications"><Bell size={18}/></button><div className="avatar">RD</div></div>
+  </header>
 }

@@ -1,4 +1,15 @@
-import {useState} from 'react'
-import {LockKeyhole,Wifi,ShieldCheck} from 'lucide-react'
+import { LockKeyhole, Wifi, Phone, CalendarClock } from 'lucide-react'
 import Button from '../components/ui/Button'
-export default function SubscriptionPage({onRenew}) { const [connected,setConnected]=useState(false); return <div className="grid min-h-[70vh] place-items-center"><div className="max-w-lg rounded-3xl border border-slate-200 bg-white p-9 text-center shadow-sm"><div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-rose-50 text-rose-600"><LockKeyhole size={28}/></div><h2 className="mt-5 font-display text-2xl font-extrabold">Subscription expired</h2><p className="mt-3 text-sm leading-6 text-slate-500">Sorry, you are not able to use this app right now. Please contact the administrator to renew your subscription.</p><div className="my-6 rounded-2xl bg-slate-50 p-4 text-left text-xs leading-6 text-slate-600"><div className="flex items-center gap-2 font-bold"><Wifi size={15}/> Internet required for renewal</div>Connect this counter PC to the internet after the administrator renews your plan. Then verify the updated license.</div><label className="flex items-center justify-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={connected} onChange={e=>setConnected(e.target.checked)}/> I have connected this PC to the internet</label><Button className="mt-5 w-full" disabled={!connected} onClick={onRenew}><ShieldCheck size={16}/> Check renewal (demo)</Button><p className="mt-4 text-[11px] text-slate-400">Your local restaurant data remains saved. This is a frontend demonstration, not real license verification.</p></div></div> }
+export default function SubscriptionPage({ license, onRenew }) {
+  const date = license?.expiresAt ? new Date(license.expiresAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Unknown'
+  return <div className="expiry-screen"><div className="expiry-card">
+    <div className="expiry-icon"><LockKeyhole size={28}/></div><span className="eyebrow">PLAN EXPIRED</span>
+    <h2>Your RestroDesk plan has ended</h2>
+    <p className="muted">This one-year plan expired on <b>{date}</b>. Please contact the software owner to renew your subscription.</p>
+    <div className="expiry-detail"><CalendarClock size={18}/><div><b>Restaurant data is still saved</b><span>Your local records have not been deleted. Billing and management screens are locked until renewal.</span></div></div>
+    <div className="expiry-detail"><Phone size={18}/><div><b>Contact the software owner</b><span>Ask the owner for a renewal or new activation code.</span></div></div>
+    <div className="expiry-detail"><Wifi size={18}/><div><b>Internet required for renewal</b><span>Connect this PC after the owner confirms the renewal.</span></div></div>
+    <Button className="w-full mt-5" onClick={onRenew}>Renew demo plan (test only)</Button>
+    <p className="fine-print">The renewal button is for local demonstration only. A production app must validate a signed renewal with the licensing server.</p>
+  </div></div>
+}

@@ -1,48 +1,69 @@
-# RestroDesk POS — Frontend starter
+# RestroDesk POS
 
-A React + Tailwind CSS frontend prototype based on the supplied Restaurant BRD and voice-note requirements.
+React + Vite restaurant POS frontend, organized for future growth and designed to keep daily operations local-first.
 
-## Run it
-1. Install Node.js (LTS).
-2. Extract this ZIP and open the `RestroDesk-Frontend` folder in VS Code.
-3. Open terminal in that folder and run:
-   ```bash
-   npm install
-   npm run dev
-   ```
-4. Open the local URL printed by Vite (usually http://localhost:5173).
+## Run
+```bash
+npm install
+npm run dev
+```
+Build and preview:
+```bash
+npm run build
+npm run preview
+```
 
-## Demo login
-- Owner: `owner@spicegarden.com`
-- Admin: `admin@restrodesk.com`
-- Password: any non-empty value (demo only).
+## First-run demo setup
+1. Open the app while connected to the internet.
+2. Complete the restaurant setup form.
+3. Demo activation code: `RD-DEMO-365`.
+4. Sign in using the demo login screen (Owner or Software Admin; any non-empty password).
+5. Owner operations are stored in this browser's localStorage and can run without a network connection after the app has been loaded/cached.
 
-## Included frontend screens
-- Role selection / login (software Admin and Restaurant Owner)
-- Owner dashboard and daybook
-- POS billing: dine-in/takeaway/delivery, item search, variants, quantity, discount, GST preview, payment methods
-- Invoice preview and browser print
-- Menu & GST setup with categories, Half/Full/custom variants and availability
-- Expenses and purchases ledger
-- Staff and salary advances / carry-forward view
-- Sales, P&L and GST reports
-- Restaurant settings, local backup export
-- Admin restaurant account and subscription screen
-- Subscription expiry / renewal state demo
+The demo license lasts 365 days from setup. The app displays a live days/hours/minutes/seconds countdown. When it expires, owner operations are locked and the user is asked to contact the software owner. The demo renewal action restarts the 365-day period.
 
-## Important architecture notes
-This ZIP contains **frontend only**. It uses browser `localStorage` as a temporary demo store so you can test the screens. It does not include a secure login server, SQLite database, Electron desktop packaging, or real subscription API.
+## Current limitations — read before commercial use
+This ZIP is a frontend demo, not a production-ready offline desktop POS:
+- Login is currently demo/local UI, not secure server authentication.
+- The activation code is hard-coded for demonstration. No real online activation or renewal API is connected.
+- License dates are stored in browser localStorage. Users can manipulate browser storage or the device clock; this is not secure licensing.
+- Business data uses browser localStorage, not SQLite. It is tied to this browser profile and can be cleared.
+- The service worker caches the app shell/assets for offline reopening after the first successful online load. Browser storage limits and cache eviction still apply.
+- To ship a robust Windows offline application, package with Electron or Tauri and use SQLite for local data. Keep network requests limited to authentication, first activation, and renewal. The licensing server should issue a cryptographically signed license, with device binding, trusted-time/rollback checks, and server-side renewal validation.
+- Before deployment, add real backend endpoints for login, setup/activation, and renewal. Never rely on a frontend-only password, activation code, or timer for commercial access control.
 
-For the intended product:
-- React + Tailwind = user interface.
-- Electron = Windows desktop application shell.
-- SQLite = persistent local restaurant database.
-- Node.js/Express online API = admin accounts and subscription activation/renewal.
-- Daily restaurant operations should work offline. Internet is required for first activation and subscription renewal.
-- A frontend-only date countdown is not secure. Production licensing should use server-issued digitally signed licenses, trusted timestamps, clock rollback checks and periodic online verification. A fully offline PC cannot perfectly prove real-world time if its system clock is manipulated.
-- Subscription expiry must lock usage without deleting restaurant data.
-- Keep salary advances and payments as ledger entries; do not overwrite history.
-- Tax rates are configurable (0%, 5%, 12%, 18% per BRD); verify applicable tax treatment before production use.
-- Sales are already income; avoid double-counting sales as separate income entries.
-
-This is a starter UI, not a production accounting or tax-compliance system.
+## Project structure
+```text
+src/
+  app/
+    App.jsx
+  components/
+    billing/
+    dashboard/
+    layout/
+    menu/
+    ui/
+  data/
+    demo.js
+  pages/
+    AdminPage.jsx
+    BillingPage.jsx
+    DashboardPage.jsx
+    DaybookPage.jsx
+    ExpensesPage.jsx
+    LoginPage.jsx
+    MenuPage.jsx
+    ReportsPage.jsx
+    SettingsPage.jsx
+    SetupPage.jsx
+    StaffPage.jsx
+    SubscriptionPage.jsx
+  services/
+    license.js
+    localStore.js
+  styles/
+    index.css
+  main.jsx
+public/
+  sw.js
+```
