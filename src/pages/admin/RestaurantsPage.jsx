@@ -2,7 +2,6 @@
 import { useState } from 'react'
 import {
   Plus,
-  Eye,
   Pencil,
   RefreshCw,
   KeyRound,
@@ -26,6 +25,11 @@ import {
   formatRemaining,
   getRestaurantStatus,
 } from '@/lib/registry'
+
+import {
+  notifySuccess,
+  notifyError,
+} from '@/lib/toast'
 
 const emptyForm = () => ({
   name: '',
@@ -101,6 +105,7 @@ export default function RestaurantsPage({
 
     if (problem) {
       setError(problem)
+      notifyError(problem)
       return
     }
 
@@ -120,9 +125,14 @@ export default function RestaurantsPage({
       })
 
       setShowForm(false)
-      window.alert('Restaurant registered successfully!')
+
+      notifySuccess('Restaurant registered successfully!')
     } catch (err) {
-      setError(err?.message || 'Could not register restaurant.')
+      const message =
+        err?.message || 'Could not register restaurant.'
+
+      setError(message)
+      notifyError(message)
     } finally {
       setBusy(false)
     }
@@ -131,6 +141,7 @@ export default function RestaurantsPage({
   // Edit restaurant
   const submitEdit = async (event) => {
     event.preventDefault()
+
     if (!selected) return
 
     const name = form.name.trim()
@@ -140,22 +151,30 @@ export default function RestaurantsPage({
     const durationDays = Number(form.days)
 
     if (!name || !ownerName) {
-      setError('Restaurant and owner names are required.')
+      const message = 'Restaurant and owner names are required.'
+      setError(message)
+      notifyError(message)
       return
     }
 
     if (!/^[6-9]\d{9}$/.test(mobile)) {
-      setError('Enter a valid 10-digit mobile number.')
+      const message = 'Enter a valid 10-digit mobile number.'
+      setError(message)
+      notifyError(message)
       return
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      setError('Enter a valid email address.')
+      const message = 'Enter a valid email address.'
+      setError(message)
+      notifyError(message)
       return
     }
 
     if (!Number.isFinite(durationDays) || durationDays <= 0) {
-      setError('Select a valid subscription duration.')
+      const message = 'Select a valid subscription duration.'
+      setError(message)
+      notifyError(message)
       return
     }
 
@@ -166,7 +185,11 @@ export default function RestaurantsPage({
     )
 
     if (duplicate) {
-      setError('Another restaurant already uses this email or mobile number.')
+      const message =
+        'Another restaurant already uses this email or mobile number.'
+
+      setError(message)
+      notifyError(message)
       return
     }
 
@@ -182,10 +205,14 @@ export default function RestaurantsPage({
         durationDays,
       })
 
-      window.alert('Restaurant details updated successfully!')
+      notifySuccess('Restaurant details updated successfully!')
       closeManage()
     } catch (err) {
-      setError(err?.message || 'Could not update restaurant.')
+      const message =
+        err?.message || 'Could not update restaurant.'
+
+      setError(message)
+      notifyError(message)
     } finally {
       setBusy(false)
     }
@@ -193,26 +220,26 @@ export default function RestaurantsPage({
 
   // Renew subscription
   const handleRenew = async () => {
-    if (!selected) return
+    if (!selected || busy) return
 
     const days = Number(renewDays)
 
     if (!Number.isFinite(days) || days <= 0) {
-      window.alert('Select a valid renewal duration.')
-      return
-    }
-
-    if (!window.confirm(`Renew ${selected.name} for ${days} days?`)) {
+      notifyError('Select a valid renewal duration.')
       return
     }
 
     try {
       setBusy(true)
+
       await onRenew(selected.id, days)
-      window.alert('Subscription renewed successfully!')
+
+      notifySuccess('Subscription renewed successfully!')
       closeManage()
     } catch (err) {
-      window.alert(err?.message || 'Subscription renewal failed.')
+      notifyError(
+        err?.message || 'Subscription renewal failed.'
+      )
     } finally {
       setBusy(false)
     }
@@ -220,11 +247,7 @@ export default function RestaurantsPage({
 
   // Reset password
   const handleResetPassword = async () => {
-    if (!selected) return
-
-    if (!window.confirm(`Reset password for ${selected.name}?`)) {
-      return
-    }
+    if (!selected || busy) return
 
     try {
       setBusy(true)
@@ -237,10 +260,13 @@ export default function RestaurantsPage({
         title: 'Password reset successfully!',
       })
 
+      notifySuccess('Owner password reset successfully!')
+
       closeManage()
-      window.alert('Owner password reset successfully!')
     } catch (err) {
-      window.alert(err?.message || 'Password reset failed.')
+      notifyError(
+        err?.message || 'Password reset failed.'
+      )
     } finally {
       setBusy(false)
     }
@@ -248,27 +274,26 @@ export default function RestaurantsPage({
 
   // Delete restaurant
   const handleDelete = async () => {
-    if (!selected) return
-
-    const confirmed = window.confirm(
-      `Permanently delete ${selected.name}? This will also invalidate its local activation record.`
-    )
-
-    if (!confirmed) return
+    if (!selected || busy) return
 
     try {
       setBusy(true)
+
       await onDelete(selected.id)
-      window.alert('Restaurant deleted successfully!')
+
+      notifySuccess('Restaurant deleted successfully!')
+
       closeManage()
     } catch (err) {
-      window.alert(err?.message || 'Could not delete restaurant.')
+      notifyError(
+        err?.message || 'Could not delete restaurant.'
+      )
     } finally {
       setBusy(false)
     }
   }
 
-  // Keep the edit form in sync with selected restaurant
+  // Start editing
   const startEdit = () => {
     setForm({
       name: selected.name || '',
@@ -283,7 +308,7 @@ export default function RestaurantsPage({
     setEditMode(true)
   }
 
-  // Refresh selected record after registry changes
+  // Refresh selected record
   const current = selected
     ? registry.find((r) => r.id === selected.id) || selected
     : null
@@ -342,7 +367,10 @@ export default function RestaurantsPage({
 
             {registry.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-5 py-10 text-center text-slate-500">
+                <td
+                  colSpan={7}
+                  className="px-5 py-10 text-center text-slate-500"
+                >
                   No restaurants registered yet.
                 </td>
               </tr>
@@ -351,7 +379,7 @@ export default function RestaurantsPage({
         </table>
       </div>
 
-      {/* Management popup */}
+      {/* Management modal */}
       {current && (
         <Modal
           title={editMode ? 'Edit restaurant' : 'Restaurant management'}
@@ -374,7 +402,6 @@ export default function RestaurantsPage({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-
                 {[
                   ['Restaurant name', current.name],
                   ['Owner name', current.ownerName],
@@ -395,13 +422,15 @@ export default function RestaurantsPage({
                   ['Status', getRestaurantStatus(current, now)],
                 ].map(([label, value]) => (
                   <div key={label} className="min-w-0">
-                    <div className="text-xs text-slate-500">{label}</div>
+                    <div className="text-xs text-slate-500">
+                      {label}
+                    </div>
+
                     <div className="mt-1 break-all text-sm font-semibold text-slate-800">
                       {value || '—'}
                     </div>
                   </div>
                 ))}
-
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -413,12 +442,14 @@ export default function RestaurantsPage({
                 <Button
                   variant="secondary"
                   onClick={startEdit}
+                  disabled={busy}
                 >
                   <Pencil size={14} />
                   Edit details
                 </Button>
               </div>
 
+              {/* Subscription renewal */}
               <div className="border-t border-slate-100 pt-4">
                 <h3 className="mb-3 font-bold text-slate-800">
                   Subscription renewal
@@ -428,12 +459,16 @@ export default function RestaurantsPage({
                   <select
                     value={renewDays}
                     onChange={(e) => setRenewDays(e.target.value)}
+                    disabled={busy}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
                   >
                     {DURATION_OPTIONS
                       .filter((option) => option.days > 7)
                       .map((option) => (
-                        <option key={option.days} value={option.days}>
+                        <option
+                          key={option.days}
+                          value={option.days}
+                        >
                           +{option.days} days
                         </option>
                       ))}
@@ -444,11 +479,12 @@ export default function RestaurantsPage({
                     disabled={busy}
                   >
                     <RefreshCw size={14} />
-                    Renew subscription
+                    {busy ? 'Please wait...' : 'Renew subscription'}
                   </Button>
                 </div>
               </div>
 
+              {/* Account actions */}
               <div className="border-t border-slate-100 pt-4">
                 <h3 className="mb-3 font-bold text-slate-800">
                   Account actions
@@ -474,12 +510,13 @@ export default function RestaurantsPage({
                   </Button>
                 </div>
               </div>
-
             </div>
           ) : (
             /* Edit form */
-            <form onSubmit={submitEdit} className="grid gap-3 md:grid-cols-2">
-
+            <form
+              onSubmit={submitEdit}
+              className="grid gap-3 md:grid-cols-2"
+            >
               <Field
                 label="Restaurant name"
                 value={form.name}
@@ -521,7 +558,10 @@ export default function RestaurantsPage({
                   className={selectClass}
                 >
                   {DURATION_OPTIONS.map((option) => (
-                    <option key={option.days} value={option.days}>
+                    <option
+                      key={option.days}
+                      value={option.days}
+                    >
                       {option.label}
                     </option>
                   ))}
@@ -546,6 +586,7 @@ export default function RestaurantsPage({
                     setEditMode(false)
                     setError('')
                   }}
+                  disabled={busy}
                 >
                   Back
                 </Button>
@@ -559,7 +600,7 @@ export default function RestaurantsPage({
         </Modal>
       )}
 
-      {/* Register popup */}
+      {/* Register modal */}
       {showForm && (
         <Modal
           title="Register restaurant"
@@ -612,7 +653,10 @@ export default function RestaurantsPage({
                 className={selectClass}
               >
                 {DURATION_OPTIONS.map((option) => (
-                  <option key={option.days} value={option.days}>
+                  <option
+                    key={option.days}
+                    value={option.days}
+                  >
                     {option.label}
                   </option>
                 ))}
@@ -636,6 +680,7 @@ export default function RestaurantsPage({
               <Button
                 variant="secondary"
                 onClick={() => setShowForm(false)}
+                disabled={busy}
               >
                 Cancel
               </Button>
@@ -648,7 +693,7 @@ export default function RestaurantsPage({
         </Modal>
       )}
 
-      {/* Credentials popup */}
+      {/* Credentials modal */}
       {created && (
         <Modal
           title={created.title}
@@ -656,32 +701,48 @@ export default function RestaurantsPage({
           onClose={() => setCreated(null)}
         >
           <div className="space-y-4">
-
             <div className="grid gap-4 text-sm sm:grid-cols-2">
               <div>
-                <div className="text-xs text-slate-500">Activation code</div>
-                <code className="font-bold">{created.record.code}</code>
+                <div className="text-xs text-slate-500">
+                  Activation code
+                </div>
+
+                <code className="font-bold">
+                  {created.record.code}
+                </code>
               </div>
 
               <div>
-                <div className="text-xs text-slate-500">Owner login</div>
+                <div className="text-xs text-slate-500">
+                  Owner login
+                </div>
+
                 <div className="break-all font-semibold">
                   {created.record.email}
                 </div>
+
                 <div className="text-xs text-slate-500">
                   or {created.record.mobile}
                 </div>
               </div>
 
               <div>
-                <div className="text-xs text-slate-500">Password</div>
-                <code className="font-bold">{created.password}</code>
+                <div className="text-xs text-slate-500">
+                  Password
+                </div>
+
+                <code className="font-bold">
+                  {created.password}
+                </code>
               </div>
             </div>
 
             <div className="flex justify-end gap-2">
               <CopyButton
-                text={shareText(created.record, created.password)}
+                text={shareText(
+                  created.record,
+                  created.password
+                )}
                 label="Copy details"
               />
 

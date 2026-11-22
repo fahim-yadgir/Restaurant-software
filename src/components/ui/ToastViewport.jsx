@@ -1,17 +1,34 @@
 
 import { useEffect, useState } from 'react'
-import { CheckCircle2, XCircle, Info, X } from 'lucide-react'
+import {
+  CheckCircle,
+  XCircle,
+  Info,
+  AlertTriangle,
+  X,
+} from 'lucide-react'
 
-const icons = {
-  success: CheckCircle2,
-  error: XCircle,
-  info: Info,
-}
-
-const styles = {
-  success: 'border-emerald-200 bg-white text-emerald-700',
-  error: 'border-rose-200 bg-white text-rose-700',
-  info: 'border-blue-200 bg-white text-blue-700',
+const toastStyles = {
+  success: {
+    icon: CheckCircle,
+    color: 'border-emerald-500',
+    iconColor: 'text-emerald-600',
+  },
+  error: {
+    icon: XCircle,
+    color: 'border-red-500',
+    iconColor: 'text-red-600',
+  },
+  info: {
+    icon: Info,
+    color: 'border-blue-500',
+    iconColor: 'text-blue-600',
+  },
+  confirm: {
+    icon: AlertTriangle,
+    color: 'border-amber-500',
+    iconColor: 'text-amber-600',
+  },
 }
 
 export default function ToastViewport() {
@@ -21,11 +38,26 @@ export default function ToastViewport() {
     const handleToast = (event) => {
       const toast = event.detail
 
-      setToasts((old) => [...old, toast])
+      if (!toast?.message) return
 
-      window.setTimeout(() => {
-        setToasts((old) => old.filter((item) => item.id !== toast.id))
-      }, 3500)
+      const id = toast.id || `${Date.now()}-${Math.random()}`
+
+      const newToast = {
+        ...toast,
+        id,
+        type: toastStyles[toast.type] ? toast.type : 'success',
+      }
+
+      setToasts((previous) => [...previous, newToast])
+
+      // Confirmation must remain until user chooses
+      if (newToast.type !== 'confirm') {
+        setTimeout(() => {
+          setToasts((previous) =>
+            previous.filter((item) => item.id !== id)
+          )
+        }, 3500)
+      }
     }
 
     window.addEventListener('restrodesk:toast', handleToast)
@@ -35,35 +67,75 @@ export default function ToastViewport() {
     }
   }, [])
 
-  const removeToast = (id) => {
-    setToasts((old) => old.filter((item) => item.id !== id))
+  const removeToast = (toast, result = false) => {
+    if (toast.type === 'confirm') {
+      toast.resolve?.(result)
+    }
+
+    setToasts((previous) =>
+      previous.filter((item) => item.id !== toast.id)
+    )
   }
 
   return (
-    <div className="pointer-events-none fixed right-4 top-4 z-[9999] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-3">
+    <div className="fixed right-4 top-4 z-[99999] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-3">
       {toasts.map((toast) => {
-        const Icon = icons[toast.type] || Info
+        const style = toastStyles[toast.type]
+        const Icon = style.icon
 
         return (
           <div
             key={toast.id}
-            role="status"
-            className={`pointer-events-auto flex items-center gap-3 rounded-xl border p-4 shadow-xl ${styles[toast.type] || styles.info}`}
+            role={toast.type === 'confirm' ? 'alertdialog' : 'status'}
+            className={`rounded-xl border-l-4 ${style.color} bg-white p-4 shadow-2xl`}
           >
-            <Icon size={22} className="shrink-0" />
+            <div className="flex items-start gap-3">
+              <Icon
+                size={23}
+                className={`mt-0.5 shrink-0 ${style.iconColor}`}
+              />
 
-            <p className="flex-1 text-sm font-semibold">
-              {toast.message}
-            </p>
+              <div className="min-w-0 flex-1">
+                {toast.type === 'confirm' && (
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {toast.title}
+                  </h3>
+                )}
 
-            <button
-              type="button"
-              onClick={() => removeToast(toast.id)}
-              className="shrink-0 rounded-lg p-1 opacity-60 hover:bg-slate-100 hover:opacity-100"
-              aria-label="Close notification"
-            >
-              <X size={16} />
-            </button>
+                <p className="mt-1 text-sm text-slate-700">
+                  {toast.message}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => removeToast(toast, false)}
+                className="text-slate-400 hover:text-slate-700"
+                aria-label="Close notification"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {toast.type === 'confirm' && (
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => removeToast(toast, false)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => removeToast(toast, true)}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Confirm
+                </button>
+              </div>
+            )}
           </div>
         )
       })}
