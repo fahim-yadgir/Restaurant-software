@@ -2,18 +2,21 @@ import { useState } from 'react'
 import { ShieldCheck, Utensils, LockKeyhole } from 'lucide-react'
 import Field from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
+import { ADMIN_EMAIL, usingDefaultPassword, verifyAdminLogin } from '@/lib/adminAuth'
 
 export default function AdminLoginPage({ onLogin }) {
-  const [email, setEmail] = useState('admin@restrodesk.com')
-  const [password, setPassword] = useState('demo123')
+  const isDefault = usingDefaultPassword()   // demo credentials are shown only until the password is changed
+  const [email, setEmail] = useState(ADMIN_EMAIL)
+  const [password, setPassword] = useState(isDefault ? 'demo123' : '')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault()
-    if (email.trim().toLowerCase() !== 'admin@restrodesk.com' || password !== 'demo123') {
-      setError('Invalid platform admin email or password.')
-      return
-    }
+    setBusy(true)
+    const ok = await verifyAdminLogin(email, password)
+    setBusy(false)
+    if (!ok) { setError('Invalid platform admin email or password.'); return }
     setError('')
     onLogin()
   }
@@ -26,12 +29,12 @@ export default function AdminLoginPage({ onLogin }) {
     </section>
     <section className="flex items-center justify-center p-6">
       <form onSubmit={submit} className="w-full max-w-md space-y-5 rounded-2xl bg-white p-6 shadow-sm sm:p-9">
-        <div className="mb-7"><div className="mb-3 grid h-12 w-12 place-items-center rounded-xl bg-orange-50 text-orange-600"><LockKeyhole size={22}/></div><div className="text-sm font-bold uppercase tracking-widest text-orange-600">Secure area · Demo login</div><h2 className="mt-2 font-display text-3xl font-extrabold text-slate-900">Platform admin login</h2><p className="mt-2 text-sm text-slate-500">This page is available directly at <b>/admin/login</b>.</p></div>
+        <div className="mb-7"><div className="mb-3 grid h-12 w-12 place-items-center rounded-xl bg-orange-50 text-orange-600"><LockKeyhole size={22}/></div><div className="text-sm font-bold uppercase tracking-widest text-orange-600">Secure area</div><h2 className="mt-2 font-display text-3xl font-extrabold text-slate-900">Platform admin login</h2><p className="mt-2 text-sm text-slate-500">This page is available directly at <b>/admin/login</b>.</p></div>
         <Field label="Admin email" value={email} onChange={setEmail} />
         <Field label="Password" type="password" value={password} onChange={setPassword} />
         {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
-        <Button type="submit" className="w-full py-3">Sign in to Platform Admin</Button>
-        <div className="rounded-xl bg-blue-50 p-4 text-xs leading-5 text-blue-800"><b>Demo credentials</b><br/>admin@restrodesk.com<br/>demo123<br/><br/>Demo-only authentication. Connect a secure backend before commercial use.</div>
+        <Button type="submit" disabled={busy} className="w-full py-3">{busy ? 'Checking…' : 'Sign in to Platform Admin'}</Button>
+        {isDefault && <div className="rounded-xl bg-blue-50 p-4 text-xs leading-5 text-blue-800"><b>Demo credentials</b><br/>{ADMIN_EMAIL}<br/>demo123<br/><br/>Change this password from Account &amp; security after signing in.</div>}
       </form>
     </section>
   </main>

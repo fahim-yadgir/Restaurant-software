@@ -3,6 +3,7 @@ import {Plus} from 'lucide-react'
 import FoodForm from '@/components/menu/FoodForm'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
 import {money} from '@/lib/format'
 
 export default function MenuPage({foods,setFoods}) {
@@ -14,10 +15,8 @@ export default function MenuPage({foods,setFoods}) {
           <h2 className="font-display text-xl font-extrabold">Menu master</h2>
           <p className="mt-1 text-sm text-slate-500">Manage dishes, categories, portion prices, GST and availability.</p>
         </div>
-        <Button onClick={()=>setShow(!show)}><Plus size={16}/> Add new dish</Button>
+        <Button onClick={()=>setShow(true)}><Plus size={16}/> Add new dish</Button>
       </div>
-
-      {show&&<FoodForm foods={foods} onAdd={f=>{setFoods([...foods,{...f,id:Date.now()}]);setShow(false)}}/>}
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
@@ -42,6 +41,12 @@ export default function MenuPage({foods,setFoods}) {
       </div>
 
       <p className="text-xs text-slate-500">Custom categories, custom portions and custom GST rates you add are saved with the dish. They show in this list, in the category and GST dropdowns for the next dish, and in Billing.</p>
+
+      {show&&(
+        <Modal title="Add new dish" subtitle="Category, portion prices and GST" size="lg" onClose={()=>setShow(false)}>
+          <FoodForm foods={foods} onAdd={f=>{setFoods([...foods,{...f,id:Date.now()}]);setShow(false)}}/>
+        </Modal>
+      )}
     </div>
   )
 }

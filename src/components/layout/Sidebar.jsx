@@ -1,6 +1,6 @@
-import { LayoutDashboard, Receipt, Utensils, Wallet, Users, ChartNoAxesCombined, Settings, ShieldCheck, LogOut, BookOpen, Store, PiggyBank } from 'lucide-react'
+import { LayoutDashboard, Receipt, Utensils, Wallet, Users, ChartNoAxesCombined, Settings, ShieldCheck, LogOut, BookOpen, Store, PiggyBank, UserCog } from 'lucide-react'
 const links = [['Dashboard','dashboard',LayoutDashboard],['Billing','billing',Receipt],['Menu & GST','menu',Utensils],['Expenses','expenses',Wallet],['Staff','staff',Users],['Pigmy & Investment','pigmy',PiggyBank],['Reports','reports',ChartNoAxesCombined],['Daybook','daybook',BookOpen],['Settings','settings',Settings]]
-const adminLinks = [['Admin Overview','admin',ShieldCheck],['Restaurants & Plans','adminPlans',Store]]
+const adminLinks = [['Admin Overview','admin',ShieldCheck],['Restaurants & Plans','adminPlans',Store],['Account & Security','adminAccount',UserCog]]
 export default function Sidebar({ page, setPage, role, onLogout }) {
   const isAdmin = role === 'admin'
   const items = isAdmin ? adminLinks : links

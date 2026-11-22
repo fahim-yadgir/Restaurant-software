@@ -2,7 +2,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import { SUPPORT, EXPIRY_WARNING_DAYS } from '@/lib/appConfig'
 
-const titles = { dashboard: 'Owner Dashboard', billing: 'Customer Billing', menu: 'Menu & GST Setup', expenses: 'Expense Book', staff: 'Staff & Salary', pigmy: 'Pigmy & Investment', reports: 'Sales & Accounting Reports', daybook: 'Live Accounting Daybook', settings: 'Restaurant Settings', admin: 'Admin Overview', adminPlans: 'Restaurants & Subscriptions' }
+const titles = { dashboard: 'Owner Dashboard', billing: 'Customer Billing', menu: 'Menu & GST Setup', expenses: 'Expense Book', staff: 'Staff & Salary', pigmy: 'Pigmy & Investment', reports: 'Sales & Accounting Reports', daybook: 'Live Accounting Daybook', settings: 'Restaurant Settings', admin: 'Admin Overview', adminPlans: 'Restaurants & Subscriptions', adminAccount: 'Account & Security' }
 
 export default function AppLayout({ page, setPage, role, onLogout, license, licenseStatus, children }) {
   const isAdmin = role === 'admin'

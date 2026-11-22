@@ -1,17 +1,27 @@
-// Device license (DEMO). Created when a restaurant activates, then used offline.
-// It carries the owner's login (salted hash) so sign-in works without internet.
-// Not tamper-proof: production needs a server-signed license.
+
 import { DAY_MS } from '@/lib/registry'
 
 const LAST_SEEN_KEY = 'rd_last_seen'
 
-// Never lets the clock go backwards: if the PC date is set back, the last time seen is used instead.
 export function trustedNow() {
   const real = Date.now()
+
   let last = 0
-  try { last = Number(localStorage.getItem(LAST_SEEN_KEY)) || 0 } catch { /* ignore */ }
+
+  try {
+    last = Number(localStorage.getItem(LAST_SEEN_KEY)) || 0
+  } catch {
+    // Ignore unavailable local storage.
+  }
+
   const value = Math.max(real, last)
-  try { localStorage.setItem(LAST_SEEN_KEY, String(value)) } catch { /* ignore */ }
+
+  try {
+    localStorage.setItem(LAST_SEEN_KEY, String(value))
+  } catch {
+    // Ignore unavailable local storage.
+  }
+
   return value
 }
 
@@ -31,20 +41,55 @@ export function buildLicense(record) {
   }
 }
 
-// Copies renewals / password resets made by the admin into this device's license.
 export function syncLicenseFromRegistry(license, registry) {
   if (!license) return license
-  const record = registry.find((r) => r.id === license.restaurantId)
-  if (!record || record.activatedAt !== license.activatedAt) return license
-  const changed = ['expiresAt', 'durationDays', 'salt', 'passwordHash'].some((k) => record[k] !== license[k])
+
+  const record = registry.find(
+    (r) => r.id === license.restaurantId
+  )
+
+  if (!record || record.activatedAt !== license.activatedAt) {
+    return license
+  }
+
+  const fields = {
+    restaurantName: record.name,
+    ownerName: record.ownerName,
+    ownerMobile: record.mobile,
+    ownerEmail: record.email,
+    expiresAt: record.expiresAt,
+    durationDays: record.durationDays,
+    salt: record.salt,
+    passwordHash: record.passwordHash,
+  }
+
+  const changed = Object.entries(fields).some(
+    ([key, value]) => license[key] !== value
+  )
+
   if (!changed) return license
-  return { ...license, expiresAt: record.expiresAt, durationDays: record.durationDays, salt: record.salt, passwordHash: record.passwordHash }
+
+  return {
+    ...license,
+    ...fields,
+  }
 }
 
 export function getLicenseStatus(license, now = Date.now()) {
-  if (!license?.expiresAt) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0, expiresAt: null }
+  if (!license?.expiresAt) {
+    return {
+      expired: true,
+      days: 0,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      expiresAt: null,
+    }
+  }
+
   const remaining = Math.max(0, license.expiresAt - now)
   const totalSeconds = Math.floor(remaining / 1000)
+
   return {
     expired: remaining <= 0,
     days: Math.floor(totalSeconds / 86400),
