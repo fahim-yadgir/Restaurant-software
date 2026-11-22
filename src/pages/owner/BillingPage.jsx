@@ -4,6 +4,7 @@ import FoodCard from '@/components/billing/FoodCard'
 import BillingCart from '@/components/billing/BillingCart'
 import InvoiceModal from '@/components/billing/InvoiceModal'
 import {getCategories} from '@/lib/menuOptions'
+import {localDate} from '@/lib/pigmy'
 
 export default function BillingPage({foods,onSaveBill,restaurantName,accounts=[]}) {
   const [query,setQuery]=useState('')
@@ -34,7 +35,7 @@ export default function BillingPage({foods,onSaveBill,restaurantName,accounts=[]
     const taxable=Math.max(0,subtotal-disc)
     const tax=cart.reduce((s,x)=>s+x.price*x.qty*(x.gst||0)/100,0)*(taxable/(subtotal||1))
     const linked=(payment==='UPI'||payment==='Card')&&accounts.some(a=>a.id===accountId)?accountId:''
-    const bill={id:`INV-${Date.now().toString().slice(-6)}`,items:cart,subtotal,discount:disc,tax,total:Math.round(taxable+tax),payment,orderType,...(linked?{accountId:linked}:{})}
+    const bill={id:`INV-${Date.now().toString().slice(-6)}`,items:cart,subtotal,discount:disc,tax,total:Math.round(taxable+tax),payment,orderType,date:localDate(),time:new Date().toTimeString().slice(0,5),...(linked?{accountId:linked}:{})}
     onSaveBill(bill)
     setInvoice(bill)
     setCart([])

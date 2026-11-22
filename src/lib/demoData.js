@@ -6,21 +6,8 @@ export const initialFoods = [
   { id: 5, name: 'Masala Chai', category: 'Beverages', image: '', variants: [{name:'Cup',price:40}], gst:5, active:true },
   { id: 6, name: 'Veg Biryani', category: 'Main Course', image: '', variants: [{name:'Half',price:130},{name:'Full',price:220}], gst:5, active:true },
 ]
-export const initialExpenses = [
-  {id:1,date:'2026-11-19',title:'Commercial gas cylinder',category:'Utilities',mode:'Cash',amount:3800},
-  {id:2,date:'2026-11-19',title:'Vegetables purchase',category:'Purchase',mode:'UPI',amount:1450},
-  {id:3,date:'2026-11-18',title:'Milk and dairy',category:'Purchase',mode:'Cash',amount:620},
-]
-export const initialStaff = [
-  {id:1,name:'Rahul Sharma',role:'Chef',mobile:'9876543210',salary:10000},
-  {id:2,name:'Amit Patil',role:'Waiter',mobile:'9876543211',salary:9000},
-  {id:3,name:'Neha Singh',role:'Cashier',mobile:'9876543212',salary:12000},
-]
-export const initialPigmy = [
-  {id:'pg-1',bankName:'State Bank of India',accountName:'Restaurant Owner',accountNumber:'30012345678',dailyAmount:500,startDate:'2026-11-19',expireDate:'2027-11-18',expectedAmount:182500,note:'Daily counter cash deposit',status:'Active'},
-]
-export const initialPigmyEntries = [
-  {id:'pe-1',accountId:'pg-1',date:'2026-11-19',type:'deposit',amount:500,note:'Daily pigmy deposit'},
-  {id:'pe-2',accountId:'pg-1',date:'2026-11-20',type:'deposit',amount:500,note:'Daily pigmy deposit'},
-  {id:'pe-3',accountId:'pg-1',date:'2026-11-21',type:'deposit',amount:500,note:'Daily pigmy deposit'},
-]
+// Sample dishes only. Expenses, staff and pigmy accounts start empty so reports show real data.
+export const initialExpenses = []
+export const initialStaff = []
+export const initialPigmy = []
+export const initialPigmyEntries = []
