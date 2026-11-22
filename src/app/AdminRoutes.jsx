@@ -1,6 +1,5 @@
 
 import AppLayout from '@/components/layout/AppLayout'
-
 import OverviewPage from '@/pages/admin/OverviewPage'
 import RestaurantsPage from '@/pages/admin/RestaurantsPage'
 import AccountPage from '@/pages/admin/AccountPage'

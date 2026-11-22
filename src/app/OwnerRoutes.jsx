@@ -1,5 +1,5 @@
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import AppLayout from '@/components/layout/AppLayout'
 
@@ -35,7 +35,7 @@ import {
 
 import { notifySuccess } from '@/lib/toast'
 
-export const DATA_KEYS = {
+const DATA_KEYS = {
   foods: 'rd_foods',
   expenses: 'rd_expenses',
   staff: 'rd_staff',
@@ -52,12 +52,47 @@ export default function OwnerRoutes({
 }) {
   const [page, setPageState] = useState('dashboard')
   const [staffId, setStaffId] = useState(null)
+  const [isOnline, setIsOnline] = useState(
+    () => typeof navigator !== 'undefined' ? navigator.onLine : false
+  )
+
+  // Monitor internet connection.
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  // Prevent all changes when internet is unavailable.
+  const checkInternet = () => {
+    const connected =
+      typeof navigator !== 'undefined' && navigator.onLine
+
+    if (!connected) {
+      setIsOnline(false)
+      window.alert(
+        'Internet connection required!\n\nPlease connect to the internet and try again.'
+      )
+      return false
+    }
+
+    setIsOnline(true)
+    return true
+  }
 
   const setPage = (next) => {
     setStaffId(null)
     setPageState(next)
   }
 
+  // Persistent application data.
   const [foods, setFoods] = usePersistentState(
     DATA_KEYS.foods,
     initialFoods
@@ -92,40 +127,67 @@ export default function OwnerRoutes({
     cleanPigmyEntries
   )
 
-  // Notification-enabled setters
-  const updateFoods = (value) => {
-    setFoods(value)
-    notifySuccess('Menu updated successfully!')
+  // Common function for protected updates.
+  const updateData = (setter, value, successMessage) => {
+    if (!checkInternet()) return false
+
+    setter(value)
+
+    notifySuccess(successMessage)
+
+    return true
   }
 
-  const updateExpenses = (value) => {
-    setExpenses(value)
-    notifySuccess('Expense records updated successfully!')
-  }
+  // Menu updates.
+  const updateFoods = (value) =>
+    updateData(
+      setFoods,
+      value,
+      'Menu updated successfully!'
+    )
 
-  const updateStaff = (value) => {
-    setStaff(value)
-    notifySuccess('Staff details updated successfully!')
-  }
+  // Expense updates.
+  const updateExpenses = (value) =>
+    updateData(
+      setExpenses,
+      value,
+      'Expense records updated successfully!'
+    )
 
-  const updatePigmy = (value) => {
-    setPigmy(value)
-    notifySuccess('Pigmy account updated successfully!')
-  }
+  // Staff updates.
+  const updateStaff = (value) =>
+    updateData(
+      setStaff,
+      value,
+      'Staff details updated successfully!'
+    )
 
-  const updatePigmyEntries = (value) => {
-    setPigmyEntries(value)
-    notifySuccess('Pigmy transaction saved successfully!')
-  }
+  // Pigmy account updates.
+  const updatePigmy = (value) =>
+    updateData(
+      setPigmy,
+      value,
+      'Pigmy account updated successfully!'
+    )
 
-  const restaurantName = license.restaurantName
+  // Pigmy transaction updates.
+  const updatePigmyEntries = (value) =>
+    updateData(
+      setPigmyEntries,
+      value,
+      'Pigmy transaction saved successfully!'
+    )
+
+  const restaurantName = license?.restaurantName || 'Restaurant'
 
   const openAccounts = pigmy.filter(
     (account) => account.status !== 'Closed'
   )
 
-  // Save a bill and optionally record its account deposit.
+  // Save bill and optional Pigmy deposit.
   const saveBill = (bill) => {
+    if (!checkInternet()) return false
+
     setBills((old) => [bill, ...old])
 
     if (bill.accountId) {
@@ -145,8 +207,11 @@ export default function OwnerRoutes({
     }
 
     notifySuccess('Bill saved successfully!')
+
+    return true
   }
 
+  // Selected staff member.
   const staffMember = staff.find(
     (member) => member.id === staffId
   )
@@ -213,7 +278,10 @@ export default function OwnerRoutes({
           onAdd={(data) =>
             updateStaff((old) => [
               ...old,
-              { ...data, id: Date.now() },
+              {
+                ...data,
+                id: Date.now(),
+              },
             ])
           }
         />
@@ -260,7 +328,10 @@ export default function OwnerRoutes({
           license={license}
           licenseStatus={licenseStatus}
           onLogout={onLogout}
-          onChangePassword={onChangePassword}
+          onChangePassword={(...args) => {
+            if (!checkInternet()) return false
+            return onChangePassword?.(...args)
+          }}
         />
       )
       break

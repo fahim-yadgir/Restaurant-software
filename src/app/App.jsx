@@ -48,8 +48,8 @@ function go(path, replace = false) {
 export default function App() {
   const [path, setPath] = useState(window.location.pathname)
 
-  const [role, setRole] = useState(
-    () => localStorage.getItem(KEYS.role) === 'owner' ? 'owner' : ''
+  const [role, setRole] = useState(() =>
+    localStorage.getItem(KEYS.role) === 'owner' ? 'owner' : ''
   )
 
   const [isAdmin, setIsAdmin] = useState(
@@ -61,7 +61,7 @@ export default function App() {
   const [license, setLicense] = usePersistentState(
     KEYS.license,
     null,
-    (saved) => saved?.restaurantId ? saved : null
+    (saved) => (saved?.restaurantId ? saved : null)
   )
 
   const now = useTrustedClock()
@@ -74,7 +74,6 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  // Synchronize changes between tabs using the same browser storage.
   useEffect(() => {
     const onStorage = (event) => {
       if (event.key === REGISTRY_KEY) {
@@ -87,7 +86,6 @@ export default function App() {
     return () => window.removeEventListener('storage', onStorage)
   }, [setRegistry])
 
-  // Synchronize admin changes into the owner's saved license.
   useEffect(() => {
     const synced = syncLicenseFromRegistry(license, registry)
 
@@ -109,10 +107,7 @@ export default function App() {
     [license, now]
   )
 
-  // --------------------------------
-  // ADMIN AUTHENTICATION
-  // --------------------------------
-
+  // Admin login
   const adminLogin = () => {
     sessionStorage.setItem(KEYS.adminSession, 'true')
     setIsAdmin(true)
@@ -125,26 +120,17 @@ export default function App() {
     go(ADMIN_PATHS.login)
   }
 
-  const navigateAdmin = (key) => {
+  const navigateAdmin = (key) =>
     go(ADMIN_PATHS[key] || ADMIN_PATHS.adminOverview)
-  }
 
-  // --------------------------------
-  // CREATE RESTAURANT
-  // --------------------------------
-
+  // Register restaurant
   const createRestaurant = async (form) => {
     const record = await createRestaurantRecord(form, registry)
-
     setRegistry((old) => [record, ...old])
-
     return record
   }
 
-  // --------------------------------
-  // UPDATE RESTAURANT
-  // --------------------------------
-
+  // Update restaurant
   const updateRestaurant = (id, updates) => {
     const name = String(updates.name || '').trim()
     const ownerName = String(updates.ownerName || '').trim()
@@ -153,54 +139,37 @@ export default function App() {
     const durationDays = Number(updates.durationDays)
 
     if (!name || !ownerName) {
-      return 'Restaurant and owner names are required.'
+      throw new Error('Restaurant and owner names are required.')
     }
 
     if (!/^[6-9]\d{9}$/.test(mobile)) {
-      return 'Enter a valid 10-digit mobile number.'
+      throw new Error('Enter a valid 10-digit mobile number.')
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      return 'Enter a valid email address.'
+      throw new Error('Enter a valid email address.')
     }
 
-    if (
-      !Number.isInteger(durationDays) ||
-      durationDays <= 0
-    ) {
-      return 'Enter a valid subscription duration.'
-    }
-
-    const current = registry.find((r) => r.id === id)
-
-    if (!current) {
-      return 'Restaurant not found.'
+    if (!Number.isFinite(durationDays) || durationDays <= 0) {
+      throw new Error('Enter a valid subscription duration.')
     }
 
     const duplicate = registry.find(
       (r) =>
         r.id !== id &&
-        (
-          normalizeEmail(r.email) === email ||
-          normalizeMobile(r.mobile) === mobile
-        )
+        (r.email === email || r.mobile === mobile)
     )
 
     if (duplicate) {
-      return 'Another restaurant already uses this email or mobile number.'
+      throw new Error(
+        'Another restaurant already uses this email or mobile number.'
+      )
     }
 
-    // If already activated, adjust expiry by the difference
-    // between the new and previous subscription duration.
-    const durationDifference = durationDays - Number(current.durationDays || 0)
+    const existing = registry.find((r) => r.id === id)
 
-    let updatedExpiry = current.expiresAt
-
-    if (current.activatedAt && current.expiresAt) {
-      updatedExpiry = Math.max(
-        trustedNow(),
-        current.expiresAt + durationDifference * DAY_MS
-      )
+    if (!existing) {
+      throw new Error('Restaurant not found.')
     }
 
     setRegistry((old) =>
@@ -213,55 +182,41 @@ export default function App() {
               mobile,
               email,
               durationDays,
-              expiresAt: updatedExpiry,
-              updatedAt: trustedNow(),
+              expiresAt: r.activatedAt
+                ? r.activatedAt + durationDays * DAY_MS
+                : null,
             }
           : r
       )
     )
-
-    return ''
   }
 
-  // --------------------------------
-  // RENEW SUBSCRIPTION
-  // --------------------------------
-
+  // Renew subscription
   const renewRestaurant = (id, days) => {
-    const duration = Number(days)
-
-    if (!Number.isInteger(duration) || duration <= 0) {
-      return 'Select a valid renewal duration.'
+    if (!Number.isFinite(days) || days <= 0) {
+      throw new Error('Invalid renewal duration.')
     }
 
-    const exists = registry.some((r) => r.id === id)
+    const existing = registry.find((r) => r.id === id)
 
-    if (!exists) {
-      return 'Restaurant not found.'
+    if (!existing) {
+      throw new Error('Restaurant not found.')
     }
 
     setRegistry((old) =>
-      old.map((r) => {
-        if (r.id !== id) return r
-
-        return {
-          ...renewRecord(r, duration, trustedNow()),
-          updatedAt: trustedNow(),
-        }
-      })
+      old.map((r) =>
+        r.id === id
+          ? renewRecord(r, days, trustedNow())
+          : r
+      )
     )
-
-    return ''
   }
 
-  // --------------------------------
-  // RESET OWNER PASSWORD
-  // --------------------------------
-
+  // Reset owner password
   const resetPassword = async (id) => {
-    const exists = registry.some((r) => r.id === id)
+    const existing = registry.find((r) => r.id === id)
 
-    if (!exists) {
+    if (!existing) {
       throw new Error('Restaurant not found.')
     }
 
@@ -272,12 +227,7 @@ export default function App() {
     setRegistry((old) =>
       old.map((r) =>
         r.id === id
-          ? {
-              ...r,
-              salt,
-              passwordHash,
-              updatedAt: trustedNow(),
-            }
+          ? { ...r, salt, passwordHash }
           : r
       )
     )
@@ -285,20 +235,25 @@ export default function App() {
     return password
   }
 
-  // --------------------------------
-  // DELETE RESTAURANT
-  // --------------------------------
-
+  // Delete restaurant
   const deleteRestaurant = (id) => {
-    setRegistry((old) =>
-      old.filter((r) => r.id !== id)
-    )
+    const existing = registry.find((r) => r.id === id)
+
+    if (!existing) {
+      throw new Error('Restaurant not found.')
+    }
+
+    setRegistry((old) => old.filter((r) => r.id !== id))
+
+    if (license?.restaurantId === id) {
+      setLicense(null)
+      setRole('')
+      localStorage.removeItem(KEYS.role)
+      go('/')
+    }
   }
 
-  // --------------------------------
-  // ACTIVATION
-  // --------------------------------
-
+  // Activation
   const lookupActivation = (rawCode) => {
     const code = normalizeCode(rawCode)
 
@@ -315,9 +270,7 @@ export default function App() {
     }
 
     if (restaurant.activatedAt) {
-      return {
-        error: 'This activation code has already been used.',
-      }
+      return { error: 'This activation code has already been used.' }
     }
 
     return { restaurant }
@@ -326,9 +279,7 @@ export default function App() {
   const activateRestaurant = (id) => {
     const record = registry.find((r) => r.id === id)
 
-    if (!record || record.activatedAt) {
-      return false
-    }
+    if (!record || record.activatedAt) return false
 
     const activatedAt = trustedNow()
 
@@ -339,20 +290,16 @@ export default function App() {
     }
 
     setRegistry((old) =>
-      old.map((r) => r.id === id ? activated : r)
+      old.map((r) => (r.id === id ? activated : r))
     )
 
     setLicense(buildLicense(activated))
-
     go('/login')
 
     return true
   }
 
-  // --------------------------------
-  // OWNER ACTIONS
-  // --------------------------------
-
+  // Owner login and logout
   const ownerLogin = () => {
     setRole('owner')
     localStorage.setItem(KEYS.role, 'owner')
@@ -372,10 +319,10 @@ export default function App() {
     go('/')
   }
 
+  // Owner password change
   const changeOwnerPassword = async (current, next) => {
     if (
-      (await hashPassword(current, license.salt)) !==
-      license.passwordHash
+      (await hashPassword(current, license.salt)) !== license.passwordHash
     ) {
       return 'Current password is incorrect.'
     }
@@ -391,18 +338,13 @@ export default function App() {
       )
     )
 
-    setLicense((old) => ({
-      ...old,
-      salt,
-      passwordHash,
-    }))
+    setLicense((old) => ({ ...old, salt, passwordHash }))
 
     return ''
   }
 
   const checkRenewal = () => {
     const fresh = readLocal(REGISTRY_KEY, [])
-
     setRegistry(fresh)
 
     const synced = syncLicenseFromRegistry(license, fresh)
@@ -414,10 +356,7 @@ export default function App() {
     return !getLicenseStatus(synced, trustedNow()).expired
   }
 
-  // --------------------------------
-  // ROUTING
-  // --------------------------------
-
+  // Admin routes
   if (path === '/admin' || path.startsWith('/admin/')) {
     if (!isAdmin) {
       return <AdminLoginPage onLogin={adminLogin} />
