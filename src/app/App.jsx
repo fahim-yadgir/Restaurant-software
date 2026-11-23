@@ -1,23 +1,29 @@
-
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import AdminRoutes, { ADMIN_PATHS } from '@/app/AdminRoutes'
 import OwnerRoutes from '@/app/OwnerRoutes'
 
 import AdminLoginPage from '@/pages/auth/AdminLoginPage'
 import LoginPage from '@/pages/auth/LoginPage'
-import SetupPage from '@/pages/setup/SetupPage'
 import SubscriptionPage from '@/pages/subscription/SubscriptionPage'
 
 import usePersistentState from '@/hooks/usePersistentState'
 import useTrustedClock from '@/hooks/useTrustedClock'
 
 import { readLocal } from '@/lib/localStore'
+import { getOrCreateDeviceId } from '@/lib/device'
+import { notifyError } from '@/lib/toast'
+import { PAYMENTS_KEY, createPayment } from '@/lib/revenue'
 
 import {
-  buildLicense,
+  ApiError,
+  ownerLogin as apiOwnerLogin,
+  refreshLicense as apiRefreshLicense,
+} from '@/lib/api'
+
+import {
   getLicenseStatus,
-  syncLicenseFromRegistry,
+  isLicenseForDevice,
   trustedNow,
 } from '@/lib/license'
 
@@ -27,9 +33,9 @@ import {
   createRestaurantRecord,
   generatePassword,
   hashPassword,
-  normalizeCode,
   normalizeEmail,
   normalizeMobile,
+  planLabel,
   randomSalt,
   renewRecord,
 } from '@/lib/registry'
@@ -39,6 +45,8 @@ const KEYS = {
   license: 'rd_license',
   adminSession: 'rd_admin_session',
 }
+
+const REVOKE_CODES = ['DEVICE_REVOKED', 'NOT_FOUND']
 
 function go(path, replace = false) {
   window.history[replace ? 'replaceState' : 'pushState']({}, '', path)
@@ -58,13 +66,25 @@ export default function App() {
 
   const [registry, setRegistry] = usePersistentState(REGISTRY_KEY, [])
 
-  const [license, setLicense] = usePersistentState(
+  const [payments, setPayments] = usePersistentState(PAYMENTS_KEY, [])
+
+  const [savedLicense, setLicense] = usePersistentState(
     KEYS.license,
     null,
     (saved) => (saved?.restaurantId ? saved : null)
   )
 
   const now = useTrustedClock()
+  const deviceId = useMemo(() => getOrCreateDeviceId(), [])
+
+  // A license is only valid on the device it was issued for.
+  // Old licenses (from the activation-code version) have no deviceId,
+  // so the owner simply signs in once online to link this device.
+  const license = isLicenseForDevice(savedLicense, deviceId)
+    ? savedLicense
+    : null
+
+  const restaurantId = license?.restaurantId || ''
 
   useEffect(() => {
     const onPop = () => setPath(window.location.pathname)
@@ -87,27 +107,90 @@ export default function App() {
   }, [setRegistry])
 
   useEffect(() => {
-    const synced = syncLicenseFromRegistry(license, registry)
-
-    if (synced !== license) {
-      setLicense(synced)
-    }
-  }, [registry, license, setLicense])
-
-  useEffect(() => {
     if (isAdmin && path === ADMIN_PATHS.login) {
       go(ADMIN_PATHS.adminOverview, true)
     }
   }, [isAdmin, path])
-
-  const setupDone = !!license?.restaurantId
 
   const licenseStatus = useMemo(
     () => getLicenseStatus(license, now),
     [license, now]
   )
 
-  // Admin login
+  // ---------------------------------------------------------------
+  // Owner session helpers
+  // ---------------------------------------------------------------
+  const startOwnerSession = (nextLicense) => {
+    setLicense(nextLicense)
+    setRole('owner')
+    localStorage.setItem(KEYS.role, 'owner')
+    go('/dashboard')
+  }
+
+  // The server no longer recognises this device: drop the license and sign out.
+  const revokeDevice = useCallback(() => {
+    setLicense(null)
+    setRole('')
+    localStorage.removeItem(KEYS.role)
+    go('/login', true)
+  }, [setLicense])
+
+  // Online only: fetch the latest license (renewals, plan changes, device check).
+  const pullLicense = useCallback(async () => {
+    if (!restaurantId) {
+      return { error: 'No restaurant is set up on this device.' }
+    }
+
+    if (!navigator.onLine) {
+      return { error: 'Internet connection is required.' }
+    }
+
+    try {
+      const { license: fresh } = await apiRefreshLicense({
+        restaurantId,
+        deviceId,
+      })
+
+      // MOCK ONLY: the mock "server" lives in localStorage, so re-read it.
+      setRegistry(readLocal(REGISTRY_KEY, []))
+
+      setLicense((old) =>
+        JSON.stringify(old) === JSON.stringify(fresh) ? old : fresh
+      )
+
+      return { license: fresh }
+    } catch (err) {
+      if (err instanceof ApiError && REVOKE_CODES.includes(err.code)) {
+        revokeDevice()
+        notifyError(err.message)
+      }
+
+      return {
+        error:
+          err instanceof ApiError
+            ? err.message
+            : 'Could not reach the server. Try again.',
+      }
+    }
+  }, [restaurantId, deviceId, revokeDevice, setLicense, setRegistry])
+
+  // While signed in: refresh when the app opens and whenever the network returns.
+  useEffect(() => {
+    if (role !== 'owner' || !restaurantId) return undefined
+
+    const sync = () => {
+      pullLicense()
+    }
+
+    sync()
+    window.addEventListener('online', sync)
+
+    return () => window.removeEventListener('online', sync)
+  }, [role, restaurantId, pullLicense])
+
+  // ---------------------------------------------------------------
+  // Admin session
+  // ---------------------------------------------------------------
   const adminLogin = () => {
     sessionStorage.setItem(KEYS.adminSession, 'true')
     setIsAdmin(true)
@@ -123,20 +206,41 @@ export default function App() {
   const navigateAdmin = (key) =>
     go(ADMIN_PATHS[key] || ADMIN_PATHS.adminOverview)
 
-  // Register restaurant
+  // ---------------------------------------------------------------
+  // Admin actions (these become API calls when the backend exists)
+  // ---------------------------------------------------------------
+  const addPayment = (entry) =>
+    setPayments((old) => [createPayment(entry), ...old])
+
+  const deletePayment = (id) =>
+    setPayments((old) => old.filter((p) => p.id !== id))
+
   const createRestaurant = async (form) => {
-    const record = await createRestaurantRecord(form, registry)
+    const record = await createRestaurantRecord(form)
     setRegistry((old) => [record, ...old])
+
+    // Revenue: record the amount received at registration (skip trial / free).
+    if (Number(form.amount) > 0) {
+      addPayment({
+        restaurantId: record.id,
+        restaurantName: record.name,
+        type: 'new',
+        plan: planLabel(record),
+        amount: form.amount,
+        method: form.method,
+      })
+    }
+
     return record
   }
 
-  // Update restaurant
   const updateRestaurant = (id, updates) => {
     const name = String(updates.name || '').trim()
     const ownerName = String(updates.ownerName || '').trim()
     const mobile = normalizeMobile(updates.mobile)
     const email = normalizeEmail(updates.email)
-    const durationDays = Number(updates.durationDays)
+    const lifetime = updates.planType === 'lifetime'
+    const durationDays = lifetime ? null : Number(updates.durationDays)
 
     if (!name || !ownerName) {
       throw new Error('Restaurant and owner names are required.')
@@ -150,7 +254,7 @@ export default function App() {
       throw new Error('Enter a valid email address.')
     }
 
-    if (!Number.isFinite(durationDays) || durationDays <= 0) {
+    if (!lifetime && (!Number.isFinite(durationDays) || durationDays <= 0)) {
       throw new Error('Enter a valid subscription duration.')
     }
 
@@ -181,18 +285,20 @@ export default function App() {
               ownerName,
               mobile,
               email,
+              planType: lifetime ? 'lifetime' : 'period',
               durationDays,
-              expiresAt: r.activatedAt
-                ? r.activatedAt + durationDays * DAY_MS
-                : null,
+              expiresAt:
+                lifetime || !r.activatedAt
+                  ? null
+                  : r.activatedAt + durationDays * DAY_MS,
             }
           : r
       )
     )
   }
 
-  // Renew subscription
-  const renewRestaurant = (id, days) => {
+  // payment = { amount, method } received for this renewal (optional)
+  const renewRestaurant = (id, days, payment = {}) => {
     if (!Number.isFinite(days) || days <= 0) {
       throw new Error('Invalid renewal duration.')
     }
@@ -205,14 +311,22 @@ export default function App() {
 
     setRegistry((old) =>
       old.map((r) =>
-        r.id === id
-          ? renewRecord(r, days, trustedNow())
-          : r
+        r.id === id ? renewRecord(r, days, trustedNow()) : r
       )
     )
+
+    if (Number(payment.amount) > 0) {
+      addPayment({
+        restaurantId: id,
+        restaurantName: existing.name,
+        type: 'renewal',
+        plan: `${days} days`,
+        amount: payment.amount,
+        method: payment.method,
+      })
+    }
   }
 
-  // Reset owner password
   const resetPassword = async (id) => {
     const existing = registry.find((r) => r.id === id)
 
@@ -226,16 +340,30 @@ export default function App() {
 
     setRegistry((old) =>
       old.map((r) =>
-        r.id === id
-          ? { ...r, salt, passwordHash }
-          : r
+        r.id === id ? { ...r, salt, passwordHash } : r
       )
     )
 
     return password
   }
 
-  // Delete restaurant
+  // Unlink the device. The next login links a new device. The plan keeps running.
+  const resetDevice = (id) => {
+    const existing = registry.find((r) => r.id === id)
+
+    if (!existing) {
+      throw new Error('Restaurant not found.')
+    }
+
+    setRegistry((old) =>
+      old.map((r) =>
+        r.id === id
+          ? { ...r, deviceId: null, deviceBoundAt: null }
+          : r
+      )
+    )
+  }
+
   const deleteRestaurant = (id) => {
     const existing = registry.find((r) => r.id === id)
 
@@ -245,65 +373,84 @@ export default function App() {
 
     setRegistry((old) => old.filter((r) => r.id !== id))
 
-    if (license?.restaurantId === id) {
+    // Same-browser demo only: clear the owner session without leaving the admin page.
+    if (savedLicense?.restaurantId === id) {
       setLicense(null)
       setRole('')
       localStorage.removeItem(KEYS.role)
-      go('/')
     }
   }
 
-  // Activation
-  const lookupActivation = (rawCode) => {
-    const code = normalizeCode(rawCode)
+  // ---------------------------------------------------------------
+  // Owner actions
+  // ---------------------------------------------------------------
+  // Returns an error message, or '' on success.
+  const ownerLogin = async (identifier, password) => {
+    const id = String(identifier || '').trim()
 
-    if (!code) {
-      return { error: 'Enter the activation code.' }
+    if (!id || !password) {
+      return 'Enter your email/mobile number and password.'
     }
 
-    const restaurant = registry.find((r) => r.code === code)
+    // This device already belongs to a restaurant: only that account can sign in.
+    if (license) {
+      const sameAccount = id.includes('@')
+        ? normalizeEmail(id) === license.ownerEmail
+        : normalizeMobile(id) === license.ownerMobile
 
-    if (!restaurant) {
-      return {
-        error: 'Activation code not found. Check the code with the software owner.',
+      if (!sameAccount) {
+        return `This device is set up for ${license.restaurantName}. Use "Switch restaurant" to sign in with a different account.`
       }
     }
 
-    if (restaurant.activatedAt) {
-      return { error: 'This activation code has already been used.' }
+    // Offline check against the license stored on this device.
+    const localLogin = async () => {
+      if (!license) {
+        return 'Internet connection is required for the first sign-in on this device.'
+      }
+
+      const hash = await hashPassword(password, license.salt)
+
+      if (hash !== license.passwordHash) {
+        return 'Incorrect email / mobile or password.'
+      }
+
+      startOwnerSession(license)
+
+      return ''
     }
 
-    return { restaurant }
-  }
-
-  const activateRestaurant = (id) => {
-    const record = registry.find((r) => r.id === id)
-
-    if (!record || record.activatedAt) return false
-
-    const activatedAt = trustedNow()
-
-    const activated = {
-      ...record,
-      activatedAt,
-      expiresAt: activatedAt + record.durationDays * DAY_MS,
+    if (!navigator.onLine) {
+      return localLogin()
     }
 
-    setRegistry((old) =>
-      old.map((r) => (r.id === id ? activated : r))
-    )
+    try {
+      const { license: fresh } = await apiOwnerLogin({
+        identifier: id,
+        password,
+        deviceId,
+      })
 
-    setLicense(buildLicense(activated))
-    go('/login')
+      // MOCK ONLY: the mock "server" lives in localStorage, so re-read it.
+      setRegistry(readLocal(REGISTRY_KEY, []))
 
-    return true
-  }
+      startOwnerSession(fresh)
 
-  // Owner login and logout
-  const ownerLogin = () => {
-    setRole('owner')
-    localStorage.setItem(KEYS.role, 'owner')
-    go('/dashboard')
+      return ''
+    } catch (err) {
+      if (err instanceof ApiError) {
+        // Server unreachable but this device has a license: allow offline sign-in.
+        if (err.code === 'NETWORK' && license) {
+          return localLogin()
+        }
+
+        return err.message
+      }
+
+      console.error('Login error:', err)
+
+      return 'Unable to sign in. Please try again.'
+    }
   }
 
   const ownerLogout = () => {
@@ -312,14 +459,15 @@ export default function App() {
     go('/login')
   }
 
-  const activateDifferentRestaurant = () => {
+  // Forget this restaurant on this computer.
+  // The account stays linked to this device until the software owner resets it.
+  const switchRestaurant = () => {
     setRole('')
     localStorage.removeItem(KEYS.role)
     setLicense(null)
-    go('/')
+    go('/login')
   }
 
-  // Owner password change
   const changeOwnerPassword = async (current, next) => {
     if (
       (await hashPassword(current, license.salt)) !== license.passwordHash
@@ -343,20 +491,20 @@ export default function App() {
     return ''
   }
 
-  const checkRenewal = () => {
-    const fresh = readLocal(REGISTRY_KEY, [])
-    setRegistry(fresh)
+  // Returns an error message, or '' when the plan is active again.
+  const checkRenewal = async () => {
+    const { license: fresh, error } = await pullLicense()
 
-    const synced = syncLicenseFromRegistry(license, fresh)
+    if (error) return error
 
-    if (synced !== license) {
-      setLicense(synced)
-    }
-
-    return !getLicenseStatus(synced, trustedNow()).expired
+    return getLicenseStatus(fresh, trustedNow()).expired
+      ? 'No renewal found yet. Contact the software owner, then try again.'
+      : ''
   }
 
-  // Admin routes
+  // ---------------------------------------------------------------
+  // Screens
+  // ---------------------------------------------------------------
   if (path === '/admin' || path.startsWith('/admin/')) {
     if (!isAdmin) {
       return <AdminLoginPage onLogin={adminLogin} />
@@ -366,6 +514,7 @@ export default function App() {
       <AdminRoutes
         path={path}
         registry={registry}
+        payments={payments}
         now={now}
         onNavigate={navigateAdmin}
         onLogout={adminLogout}
@@ -373,16 +522,21 @@ export default function App() {
         onUpdate={updateRestaurant}
         onRenew={renewRestaurant}
         onResetPassword={resetPassword}
+        onResetDevice={resetDevice}
         onDelete={deleteRestaurant}
+        onAddPayment={addPayment}
+        onDeletePayment={deletePayment}
       />
     )
   }
 
-  if (!setupDone) {
+  // No license on this device yet: sign in (online) to link the device.
+  if (!license) {
     return (
-      <SetupPage
-        onLookup={lookupActivation}
-        onActivate={activateRestaurant}
+      <LoginPage
+        license={null}
+        onLogin={ownerLogin}
+        onSwitchRestaurant={switchRestaurant}
       />
     )
   }
@@ -401,7 +555,7 @@ export default function App() {
       <LoginPage
         license={license}
         onLogin={ownerLogin}
-        onActivateDifferent={activateDifferentRestaurant}
+        onSwitchRestaurant={switchRestaurant}
       />
     )
   }

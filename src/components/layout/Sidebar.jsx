@@ -1,4 +1,3 @@
-
 import {
   LayoutDashboard,
   Receipt,
@@ -14,6 +13,7 @@ import {
   PiggyBank,
   UserCog,
   CalendarClock,
+  IndianRupee,
 } from 'lucide-react'
 
 import { EXPIRY_WARNING_DAYS } from '@/lib/appConfig'
@@ -33,6 +33,7 @@ const links = [
 const adminLinks = [
   ['Admin Overview', 'admin', ShieldCheck],
   ['Restaurants & Plans', 'adminPlans', Store],
+  ['Revenue', 'adminRevenue', IndianRupee],
   ['Account & Security', 'adminAccount', UserCog],
 ]
 

@@ -1,4 +1,3 @@
-
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import { SUPPORT, EXPIRY_WARNING_DAYS } from '@/lib/appConfig'
@@ -15,6 +14,7 @@ const titles = {
   settings: 'Restaurant Settings',
   admin: 'Admin Overview',
   adminPlans: 'Restaurants & Subscriptions',
+  adminRevenue: 'Revenue',
   adminAccount: 'Account & Security',
 }
 

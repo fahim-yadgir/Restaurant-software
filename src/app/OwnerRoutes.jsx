@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react'
 
 import AppLayout from '@/components/layout/AppLayout'
@@ -127,6 +126,10 @@ export default function OwnerRoutes({
     cleanPigmyEntries
   )
 
+  // Soft-deleted dishes stay stored (so old bills keep their names)
+  // but are hidden from the Menu and Billing screens.
+  const liveFoods = foods.filter((food) => !food.deleted)
+
   // Common function for protected updates.
   const updateData = (setter, value, successMessage) => {
     if (!checkInternet()) return false
@@ -222,7 +225,7 @@ export default function OwnerRoutes({
     case 'billing':
       content = (
         <BillingPage
-          foods={foods}
+          foods={liveFoods}
           restaurantName={restaurantName}
           accounts={openAccounts}
           onSaveBill={saveBill}
@@ -233,7 +236,7 @@ export default function OwnerRoutes({
     case 'menu':
       content = (
         <MenuPage
-          foods={foods}
+          foods={liveFoods}
           setFoods={updateFoods}
         />
       )

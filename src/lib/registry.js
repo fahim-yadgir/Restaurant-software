@@ -1,9 +1,14 @@
-
 export const REGISTRY_KEY = 'rd_registry'
 
 export const DAY_MS = 24 * 60 * 60 * 1000
 
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+// planType: 'period' (days, needs renewal) or 'lifetime' (permanent, never expires).
+// Records created before plan types existed have no planType and count as 'period'.
+export const isLifetime = (item) => item?.planType === 'lifetime'
+
+export const planLabel = (item) =>
+  isLifetime(item) ? 'Lifetime' : `${item?.durationDays} days`
+
 const PASSWORD_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789'
 
 function randomChars(length, chars) {
@@ -22,21 +27,6 @@ export const generatePassword = () =>
 
 export const randomSalt = () =>
   randomChars(16, PASSWORD_CHARS)
-
-export function generateActivationCode(existing = []) {
-  const used = new Set(existing.map((r) => r.code))
-
-  let code
-
-  do {
-    code = `RD-${randomChars(4, CODE_CHARS)}-${randomChars(4, CODE_CHARS)}`
-  } while (used.has(code))
-
-  return code
-}
-
-export const normalizeCode = (value) =>
-  String(value || '').trim().toUpperCase().replace(/\s+/g, '')
 
 export const normalizeMobile = (value) =>
   String(value || '').replace(/\D/g, '').slice(-10)
@@ -81,8 +71,16 @@ export function validateRegistration(form, registry) {
     return 'Enter a valid email address.'
   }
 
-  if (!Number(form.days)) {
+  if (form.days !== 'lifetime' && !Number(form.days)) {
     return 'Choose a subscription duration.'
+  }
+
+  if (
+    form.amount !== undefined &&
+    form.amount !== '' &&
+    !(Number(form.amount) >= 0)
+  ) {
+    return 'Enter a valid amount received.'
   }
 
   if ((form.password || '').length < 6) {
@@ -103,8 +101,9 @@ export function validateRegistration(form, registry) {
   return ''
 }
 
-export async function createRestaurantRecord(form, existing) {
+export async function createRestaurantRecord(form) {
   const salt = randomSalt()
+  const lifetime = form.planType === 'lifetime'
 
   return {
     id: `rest_${Date.now().toString(36)}${randomChars(3, PASSWORD_CHARS)}`,
@@ -112,18 +111,24 @@ export async function createRestaurantRecord(form, existing) {
     ownerName: form.ownerName.trim(),
     mobile: normalizeMobile(form.mobile),
     email: normalizeEmail(form.email),
-    durationDays: Number(form.durationDays),
-    code: generateActivationCode(existing),
+    planType: lifetime ? 'lifetime' : 'period',
+    durationDays: lifetime ? null : Number(form.durationDays),
     salt,
     passwordHash: await hashPassword(form.password, salt),
     createdAt: Date.now(),
+    // Plan starts on the owner's first login (when the device is linked).
     activatedAt: null,
     expiresAt: null,
+    // 1 account = 1 device. Set by the server on first login, cleared by "Reset device".
+    deviceId: null,
+    deviceBoundAt: null,
   }
 }
 
 export function getRestaurantStatus(record, now = Date.now()) {
   if (!record.activatedAt) return 'pending'
+
+  if (isLifetime(record)) return 'active'
 
   if (!record.expiresAt || record.expiresAt <= now) {
     return 'expired'
@@ -140,6 +145,10 @@ export function getRestaurantStatus(record, now = Date.now()) {
 // Pending restaurants get additional plan days.
 // Activated restaurants get additional expiry days.
 export function renewRecord(record, days, now = Date.now()) {
+  if (isLifetime(record)) {
+    throw new Error('Lifetime plans never expire, so they do not need renewal.')
+  }
+
   const duration = Number(days)
 
   if (!Number.isInteger(duration) || duration <= 0) {
@@ -173,7 +182,7 @@ export const formatDate = (timestamp) =>
     : '—'
 
 export function formatRemaining(expiresAt, now = Date.now()) {
-  if (!expiresAt) return 'Not activated yet'
+  if (!expiresAt) return 'Not logged in yet'
 
   const ms = expiresAt - now
 
@@ -183,4 +192,17 @@ export function formatRemaining(expiresAt, now = Date.now()) {
   const hours = Math.floor((ms % DAY_MS) / 3600000)
 
   return `${days}d ${hours}h left`
+}
+
+// Short, readable form of a device id for tables (full id stays in the details modal).
+export const shortDeviceId = (id) =>
+  id ? `${id.slice(0, 11)}…${id.slice(-4)}` : '—'
+
+// Remaining time as text for admin screens.
+export function remainingText(record, now = Date.now()) {
+  if (!record.activatedAt) return 'Starts on first login'
+
+  if (isLifetime(record)) return 'Never expires'
+
+  return formatRemaining(record.expiresAt, now)
 }

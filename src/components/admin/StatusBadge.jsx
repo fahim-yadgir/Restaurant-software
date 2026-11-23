@@ -1,6 +1,6 @@
 import Badge from '@/components/ui/Badge'
 
-export const STATUS = { pending: ['orange', 'Awaiting activation'], active: ['green', 'Active'], expiring: ['orange', 'Expiring soon'], expired: ['red', 'Expired'] }
+export const STATUS = { pending: ['orange', 'Awaiting first login'], active: ['green', 'Active'], expiring: ['orange', 'Expiring soon'], expired: ['red', 'Expired'] }
 
 export default function StatusBadge({ status }) {
   const [tone, label] = STATUS[status]

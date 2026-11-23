@@ -1,4 +1,3 @@
-
 import { DAY_MS } from '@/lib/registry'
 
 const LAST_SEEN_KEY = 'rd_last_seen'
@@ -25,57 +24,43 @@ export function trustedNow() {
   return value
 }
 
+// The license a device keeps for offline use. Today it is built from the mock
+// registry; later the server returns it signed and the app verifies the signature.
 export function buildLicense(record) {
   return {
     restaurantId: record.id,
-    code: record.code,
     restaurantName: record.name,
     ownerName: record.ownerName,
     ownerMobile: record.mobile,
     ownerEmail: record.email,
     salt: record.salt,
     passwordHash: record.passwordHash,
+    deviceId: record.deviceId,
     activatedAt: record.activatedAt,
     expiresAt: record.expiresAt,
+    planType: record.planType || 'period',
     durationDays: record.durationDays,
   }
 }
 
-export function syncLicenseFromRegistry(license, registry) {
-  if (!license) return license
-
-  const record = registry.find(
-    (r) => r.id === license.restaurantId
-  )
-
-  if (!record || record.activatedAt !== license.activatedAt) {
-    return license
-  }
-
-  const fields = {
-    restaurantName: record.name,
-    ownerName: record.ownerName,
-    ownerMobile: record.mobile,
-    ownerEmail: record.email,
-    expiresAt: record.expiresAt,
-    durationDays: record.durationDays,
-    salt: record.salt,
-    passwordHash: record.passwordHash,
-  }
-
-  const changed = Object.entries(fields).some(
-    ([key, value]) => license[key] !== value
-  )
-
-  if (!changed) return license
-
-  return {
-    ...license,
-    ...fields,
-  }
-}
+// A license only counts on the device it was issued for.
+export const isLicenseForDevice = (license, deviceId) =>
+  !!license?.restaurantId && !!deviceId && license.deviceId === deviceId
 
 export function getLicenseStatus(license, now = Date.now()) {
+  // Lifetime plans never expire. days = Infinity keeps "days < 7" warnings off.
+  if (license?.planType === 'lifetime') {
+    return {
+      expired: false,
+      lifetime: true,
+      days: Infinity,
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      expiresAt: null,
+    }
+  }
+
   if (!license?.expiresAt) {
     return {
       expired: true,

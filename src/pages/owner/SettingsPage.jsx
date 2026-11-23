@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { LogOut, KeyRound } from 'lucide-react'
 
@@ -42,9 +41,11 @@ export default function SettingsPage({
     ['Owner', license.ownerName],
     ['Mobile', license.ownerMobile],
     ['Email', license.ownerEmail],
-    ['Activated on', formatDate(license.activatedAt)],
-    ['Expires on', formatDate(license.expiresAt)],
-    ['Time remaining', `${licenseStatus.days} days`],
+    ['First login on', formatDate(license.activatedAt)],
+    ['Linked device', license.deviceId],
+    ['Plan', license.planType === 'lifetime' ? 'Lifetime' : `${license.durationDays} days`],
+    ['Expires on', license.planType === 'lifetime' ? 'Never' : formatDate(license.expiresAt)],
+    ['Time remaining', licenseStatus.lifetime ? 'Unlimited' : `${licenseStatus.days} days`],
   ]
 
   return (
@@ -62,7 +63,7 @@ export default function SettingsPage({
         <div className="mb-4 flex items-center justify-between">
           <b>Subscription</b>
           <Badge tone="green">
-            Active · {license.durationDays}-day plan
+            Active · {license.planType === 'lifetime' ? 'Lifetime plan' : `${license.durationDays}-day plan`}
           </Badge>
         </div>
 
@@ -70,7 +71,7 @@ export default function SettingsPage({
           {rows.map(([key, value]) => (
             <div key={key} className="flex justify-between gap-4">
               <dt className="text-slate-500">{key}</dt>
-              <dd className="text-right font-semibold">{value || '—'}</dd>
+              <dd className="break-all text-right font-semibold">{value || '—'}</dd>
             </div>
           ))}
         </dl>

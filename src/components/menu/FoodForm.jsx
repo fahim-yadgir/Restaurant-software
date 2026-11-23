@@ -24,26 +24,25 @@ export default function FoodForm({
   const categories = getCategories(foods)
   const slabs = getGstSlabs(foods)
 
+  const findVariant = name =>
+    initialFood?.variants?.find(
+      v => v.name?.trim().toLowerCase() === name.toLowerCase()
+    )
+
   const [name, setName] = useState(initialFood?.name || '')
+
   const [category, setCategory] = useState(
     initialFood?.category || 'Main Course'
   )
+
   const [customCategory, setCustomCategory] = useState('')
 
   const [half, setHalf] = useState(
-    String(
-      initialFood?.variants?.find(
-        v => v.name?.toLowerCase() === 'half'
-      )?.price ?? ''
-    )
+    String(findVariant('Half')?.price ?? '')
   )
 
   const [full, setFull] = useState(
-    String(
-      initialFood?.variants?.find(
-        v => v.name?.toLowerCase() === 'full'
-      )?.price ?? ''
-    )
+    String(findVariant('Full')?.price ?? '')
   )
 
   const [extras, setExtras] = useState(
@@ -51,7 +50,7 @@ export default function FoodForm({
       .filter(
         v =>
           !['half', 'full'].includes(
-            v.name?.toLowerCase()
+            v.name?.trim().toLowerCase()
           )
       )
       .map(v => ({
@@ -70,7 +69,10 @@ export default function FoodForm({
   )
 
   const [customGst, setCustomGst] = useState(
-    gst === CUSTOM ? String(initialFood?.gst ?? '') : ''
+    initialFood &&
+    !slabs.some(s => Number(s) === Number(initialFood.gst))
+      ? String(initialFood.gst ?? '')
+      : ''
   )
 
   const [error, setError] = useState('')
@@ -96,6 +98,7 @@ export default function FoodForm({
 
     let finalCategory = category
 
+    // Validate and save custom category
     if (category === CUSTOM) {
       const c = customCategory.trim()
 
@@ -110,6 +113,7 @@ export default function FoodForm({
         ) || c
     }
 
+    // Validate GST
     let rate = Number(gst)
 
     if (gst === CUSTOM) {
@@ -128,6 +132,7 @@ export default function FoodForm({
       rate = Math.round(rate * 100) / 100
     }
 
+    // Validate portion prices
     const variants = []
 
     if (half !== '') {
@@ -214,12 +219,19 @@ export default function FoodForm({
 
           <select
             value={category}
-            onChange={e => setCategory(e.target.value)}
+            onChange={e => {
+              setCategory(e.target.value)
+              setError('')
+            }}
             className={selectCls}
           >
-            {categories.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+            {categories
+              .filter(c => c !== 'All' && c !== CUSTOM)
+              .map(c => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
 
             <option value={CUSTOM}>+ Custom category…</option>
           </select>
@@ -271,7 +283,7 @@ export default function FoodForm({
                   label="Custom portion name"
                   value={row.name}
                   onChange={v => updateExtra(row.id, 'name', v)}
-                  placeholder="Small, Quarter, Large"
+                  placeholder="Medium, Small, Quarter"
                 />
 
                 <Field
@@ -286,7 +298,9 @@ export default function FoodForm({
                 <button
                   type="button"
                   onClick={() =>
-                    setExtras(old => old.filter(x => x.id !== row.id))
+                    setExtras(old =>
+                      old.filter(x => x.id !== row.id)
+                    )
                   }
                   className="mb-1 grid h-10 w-10 place-items-center rounded-xl text-rose-500 hover:bg-rose-50"
                   title="Remove portion"
@@ -303,7 +317,8 @@ export default function FoodForm({
           onClick={() => setExtras(old => [...old, newRow()])}
           className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-orange-300 px-3 py-1.5 text-xs font-bold text-orange-600 hover:bg-orange-50"
         >
-          <Plus size={14} /> Add custom portion
+          <Plus size={14} />
+          Add custom portion
         </button>
       </div>
 
@@ -319,7 +334,9 @@ export default function FoodForm({
             className={selectCls}
           >
             {slabs.map(s => (
-              <option key={s} value={String(s)}>{s}%</option>
+              <option key={s} value={String(s)}>
+                {s}%
+              </option>
             ))}
 
             <option value={CUSTOM}>+ Custom GST…</option>

@@ -1,10 +1,10 @@
-
 import { useState } from 'react'
 import {
   Plus,
   Pencil,
   RefreshCw,
   KeyRound,
+  MonitorSmartphone,
   Trash2,
 } from 'lucide-react'
 
@@ -14,7 +14,14 @@ import Modal from '@/components/ui/Modal'
 import CopyButton from '@/components/ui/CopyButton'
 import RestaurantRow from '@/components/admin/RestaurantRow'
 
-import { DURATION_OPTIONS } from '@/lib/appConfig'
+import {
+  DURATION_OPTIONS,
+  PLAN_OPTIONS,
+  PLAN_PRICES,
+  defaultPrice,
+} from '@/lib/appConfig'
+
+import { PAYMENT_METHODS } from '@/lib/revenue'
 
 import {
   generatePassword,
@@ -22,13 +29,16 @@ import {
   normalizeEmail,
   normalizeMobile,
   formatDate,
-  formatRemaining,
   getRestaurantStatus,
+  isLifetime,
+  planLabel,
+  remainingText,
 } from '@/lib/registry'
 
 import {
   notifySuccess,
   notifyError,
+  notifyConfirm,
 } from '@/lib/toast'
 
 const emptyForm = () => ({
@@ -38,6 +48,8 @@ const emptyForm = () => ({
   email: '',
   days: '90',
   password: generatePassword(),
+  amount: String(PLAN_PRICES[90]),
+  method: 'UPI',
 })
 
 const selectClass =
@@ -50,8 +62,9 @@ function shareText(record, password) {
     `Owner: ${record.ownerName}`,
     `Mobile: ${record.mobile}`,
     `Email: ${record.email}`,
-    `Activation code: ${record.code}`,
+    `Plan: ${planLabel(record)}`,
     `Password: ${password}`,
+    'Sign in with your email or mobile number. The first sign-in needs internet and links the app to that computer (one device per account).',
   ].join('\n')
 }
 
@@ -62,6 +75,7 @@ export default function RestaurantsPage({
   onUpdate,
   onRenew,
   onResetPassword,
+  onResetDevice,
   onDelete,
 }) {
   const [showForm, setShowForm] = useState(false)
@@ -72,6 +86,8 @@ export default function RestaurantsPage({
   const [selected, setSelected] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [renewDays, setRenewDays] = useState('30')
+  const [renewAmount, setRenewAmount] = useState(String(PLAN_PRICES[30]))
+  const [renewMethod, setRenewMethod] = useState('UPI')
 
   const [created, setCreated] = useState(null)
 
@@ -88,6 +104,8 @@ export default function RestaurantsPage({
     setSelected(restaurant)
     setEditMode(false)
     setRenewDays('30')
+    setRenewAmount(String(PLAN_PRICES[30]))
+    setRenewMethod('UPI')
     setError('')
   }
 
@@ -115,7 +133,11 @@ export default function RestaurantsPage({
     try {
       const record = await onCreate({
         ...form,
-        durationDays: Number(form.days),
+        planType: form.days === 'lifetime' ? 'lifetime' : 'period',
+        durationDays:
+          form.days === 'lifetime' ? null : Number(form.days),
+        amount: Number(form.amount) || 0,
+        method: form.method,
       })
 
       setCreated({
@@ -148,7 +170,8 @@ export default function RestaurantsPage({
     const ownerName = form.ownerName.trim()
     const mobile = normalizeMobile(form.mobile)
     const email = normalizeEmail(form.email)
-    const durationDays = Number(form.days)
+    const lifetime = form.days === 'lifetime'
+    const durationDays = lifetime ? null : Number(form.days)
 
     if (!name || !ownerName) {
       const message = 'Restaurant and owner names are required.'
@@ -171,8 +194,8 @@ export default function RestaurantsPage({
       return
     }
 
-    if (!Number.isFinite(durationDays) || durationDays <= 0) {
-      const message = 'Select a valid subscription duration.'
+    if (!lifetime && (!Number.isFinite(durationDays) || durationDays <= 0)) {
+      const message = 'Select a valid plan.'
       setError(message)
       notifyError(message)
       return
@@ -202,6 +225,7 @@ export default function RestaurantsPage({
         ownerName,
         mobile,
         email,
+        planType: lifetime ? 'lifetime' : 'period',
         durationDays,
       })
 
@@ -229,10 +253,18 @@ export default function RestaurantsPage({
       return
     }
 
+    if (!(Number(renewAmount) >= 0)) {
+      notifyError('Enter a valid amount received.')
+      return
+    }
+
     try {
       setBusy(true)
 
-      await onRenew(selected.id, days)
+      await onRenew(selected.id, days, {
+        amount: Number(renewAmount) || 0,
+        method: renewMethod,
+      })
 
       notifySuccess('Subscription renewed successfully!')
       closeManage()
@@ -272,6 +304,30 @@ export default function RestaurantsPage({
     }
   }
 
+  // Reset device
+  const handleResetDevice = async () => {
+    if (!selected || busy) return
+
+    const confirmed = await notifyConfirm(
+      'The current device will lose access. The next login links a new device. The subscription keeps running.',
+      'Reset linked device?'
+    )
+
+    if (!confirmed) return
+
+    try {
+      setBusy(true)
+
+      await onResetDevice(selected.id)
+
+      notifySuccess('Device reset. The owner can now sign in on a new device.')
+    } catch (err) {
+      notifyError(err?.message || 'Could not reset the device.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // Delete restaurant
   const handleDelete = async () => {
     if (!selected || busy) return
@@ -300,7 +356,9 @@ export default function RestaurantsPage({
       ownerName: selected.ownerName || '',
       mobile: selected.mobile || '',
       email: selected.email || '',
-      days: String(selected.durationDays || 90),
+      days: isLifetime(selected)
+        ? 'lifetime'
+        : String(selected.durationDays || 90),
       password: '',
     })
 
@@ -342,7 +400,7 @@ export default function RestaurantsPage({
               {[
                 'Restaurant',
                 'Owner',
-                'Activation code',
+                'Linked device',
                 'Plan',
                 'Status',
                 'Expires',
@@ -408,17 +466,13 @@ export default function RestaurantsPage({
                   ['Mobile number', current.mobile],
                   ['Email', current.email],
                   ['Restaurant ID', current.id],
-                  ['Activation code', current.code],
-                  ['Subscription duration', `${current.durationDays} days`],
+                  ['Linked device', current.deviceId || 'Not linked yet'],
+                  ['Device linked on', formatDate(current.deviceBoundAt)],
+                  ['Plan', planLabel(current)],
                   ['Registered date', formatDate(current.createdAt)],
-                  ['Activation date', formatDate(current.activatedAt)],
-                  ['Expiry date', formatDate(current.expiresAt)],
-                  [
-                    'Remaining time',
-                    current.expiresAt
-                      ? formatRemaining(current.expiresAt, now)
-                      : 'Starts on activation',
-                  ],
+                  ['First login date', formatDate(current.activatedAt)],
+                  ['Expiry date', isLifetime(current) ? 'Never' : formatDate(current.expiresAt)],
+                  ['Remaining time', remainingText(current, now)],
                   ['Status', getRestaurantStatus(current, now)],
                 ].map(([label, value]) => (
                   <div key={label} className="min-w-0">
@@ -434,10 +488,12 @@ export default function RestaurantsPage({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <CopyButton
-                  text={current.code}
-                  label="Copy activation code"
-                />
+                {current.deviceId && (
+                  <CopyButton
+                    text={current.deviceId}
+                    label="Copy device ID"
+                  />
+                )}
 
                 <Button
                   variant="secondary"
@@ -450,6 +506,11 @@ export default function RestaurantsPage({
               </div>
 
               {/* Subscription renewal */}
+              {isLifetime(current) ? (
+                <div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                  Lifetime plan: this account never expires, so no renewal is needed.
+                </div>
+              ) : (
               <div className="border-t border-slate-100 pt-4">
                 <h3 className="mb-3 font-bold text-slate-800">
                   Subscription renewal
@@ -458,7 +519,10 @@ export default function RestaurantsPage({
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     value={renewDays}
-                    onChange={(e) => setRenewDays(e.target.value)}
+                    onChange={(e) => {
+                      setRenewDays(e.target.value)
+                      setRenewAmount(String(defaultPrice(e.target.value)))
+                    }}
                     disabled={busy}
                     className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
                   >
@@ -474,6 +538,29 @@ export default function RestaurantsPage({
                       ))}
                   </select>
 
+                  <div className="w-36">
+                    <Field
+                      label=""
+                      value={renewAmount}
+                      onChange={setRenewAmount}
+                      placeholder="Amount ₹"
+                      inputMode="decimal"
+                    />
+                  </div>
+
+                  <select
+                    value={renewMethod}
+                    onChange={(e) => setRenewMethod(e.target.value)}
+                    disabled={busy}
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                  >
+                    {PAYMENT_METHODS.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </select>
+
                   <Button
                     onClick={handleRenew}
                     disabled={busy}
@@ -483,6 +570,7 @@ export default function RestaurantsPage({
                   </Button>
                 </div>
               </div>
+              )}
 
               {/* Account actions */}
               <div className="border-t border-slate-100 pt-4">
@@ -498,6 +586,15 @@ export default function RestaurantsPage({
                   >
                     <KeyRound size={14} />
                     Reset password
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    onClick={handleResetDevice}
+                    disabled={busy || !current.deviceId}
+                  >
+                    <MonitorSmartphone size={14} />
+                    Reset device
                   </Button>
 
                   <Button
@@ -549,15 +646,18 @@ export default function RestaurantsPage({
 
               <label className="block space-y-1.5">
                 <span className="text-xs font-semibold text-slate-600">
-                  Subscription duration
+                  Plan
                 </span>
 
                 <select
                   value={form.days}
-                  onChange={(e) => set('days')(e.target.value)}
+                  onChange={(e) => {
+                    set('days')(e.target.value)
+                    set('amount')(String(defaultPrice(e.target.value)))
+                  }}
                   className={selectClass}
                 >
-                  {DURATION_OPTIONS.map((option) => (
+                  {PLAN_OPTIONS.map((option) => (
                     <option
                       key={option.days}
                       value={option.days}
@@ -569,8 +669,8 @@ export default function RestaurantsPage({
               </label>
 
               <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                Activation code remains unchanged. Use Reset password
-                separately to change the owner's password.
+                The linked device stays unchanged. Use Reset password or
+                Reset device separately.
               </div>
 
               {error && (
@@ -604,7 +704,7 @@ export default function RestaurantsPage({
       {showForm && (
         <Modal
           title="Register restaurant"
-          subtitle="Create a restaurant account and activation code"
+          subtitle="Create a restaurant account. The owner links a device on first login."
           size="lg"
           onClose={() => setShowForm(false)}
         >
@@ -644,15 +744,18 @@ export default function RestaurantsPage({
 
             <label className="block space-y-1.5">
               <span className="text-xs font-semibold text-slate-600">
-                Subscription duration
+                Plan
               </span>
 
               <select
                 value={form.days}
-                onChange={(e) => set('days')(e.target.value)}
+                onChange={(e) => {
+                    set('days')(e.target.value)
+                    set('amount')(String(defaultPrice(e.target.value)))
+                  }}
                 className={selectClass}
               >
-                {DURATION_OPTIONS.map((option) => (
+                {PLAN_OPTIONS.map((option) => (
                   <option
                     key={option.days}
                     value={option.days}
@@ -669,6 +772,32 @@ export default function RestaurantsPage({
               onChange={set('password')}
               placeholder="Minimum 6 characters"
             />
+
+            <Field
+              label="Amount received (₹)"
+              value={form.amount}
+              onChange={set('amount')}
+              placeholder="0 for a free trial"
+              inputMode="decimal"
+            />
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold text-slate-600">
+                Payment method
+              </span>
+
+              <select
+                value={form.method}
+                onChange={(e) => set('method')(e.target.value)}
+                className={selectClass}
+              >
+                {PAYMENT_METHODS.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             {error && (
               <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700 md:col-span-2">
@@ -702,16 +831,6 @@ export default function RestaurantsPage({
         >
           <div className="space-y-4">
             <div className="grid gap-4 text-sm sm:grid-cols-2">
-              <div>
-                <div className="text-xs text-slate-500">
-                  Activation code
-                </div>
-
-                <code className="font-bold">
-                  {created.record.code}
-                </code>
-              </div>
-
               <div>
                 <div className="text-xs text-slate-500">
                   Owner login
