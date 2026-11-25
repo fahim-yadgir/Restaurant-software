@@ -92,6 +92,9 @@ export default function OwnerRoutes({
   }
 
   // Persistent application data.
+  // Restaurant details printed on the bill (GSTIN, address). Saved from Settings.
+  const [profile, setProfile] = usePersistentState('rd_profile', {})
+
   const [foods, setFoods] = usePersistentState(
     DATA_KEYS.foods,
     initialFoods
@@ -227,6 +230,8 @@ export default function OwnerRoutes({
         <BillingPage
           foods={liveFoods}
           restaurantName={restaurantName}
+          profile={profile}
+          phone={license.ownerMobile}
           accounts={openAccounts}
           onSaveBill={saveBill}
         />
@@ -330,6 +335,8 @@ export default function OwnerRoutes({
         <SettingsPage
           license={license}
           licenseStatus={licenseStatus}
+          profile={profile}
+          onSaveProfile={setProfile}
           onLogout={onLogout}
           onChangePassword={(...args) => {
             if (!checkInternet()) return false

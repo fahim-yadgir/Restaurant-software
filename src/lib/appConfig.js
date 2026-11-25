@@ -23,6 +23,9 @@ export const PLAN_OPTIONS = [
   { label: 'Lifetime (permanent)', days: 'lifetime' },
 ]
 
+// Software name printed at the bottom of every bill.
+export const APP_NAME = 'RestroDesk POS'
+
 // Default price (INR) suggested when registering / renewing a plan. The admin can
 // change the amount on every payment. EDIT THESE to your real pricing.
 export const PLAN_PRICES = {

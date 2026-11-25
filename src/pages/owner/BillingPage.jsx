@@ -6,7 +6,7 @@ import InvoiceModal from '@/components/billing/InvoiceModal'
 import {getCategories} from '@/lib/menuOptions'
 import {localDate} from '@/lib/pigmy'
 
-export default function BillingPage({foods,onSaveBill,restaurantName,accounts=[]}) {
+export default function BillingPage({foods,onSaveBill,restaurantName,accounts=[],profile={},phone=''}) {
   const [query,setQuery]=useState('')
   const [cart,setCart]=useState([])
   const [orderType,setOrderType]=useState('Dine-In')
@@ -86,7 +86,7 @@ export default function BillingPage({foods,onSaveBill,restaurantName,accounts=[]
         />
       </div>
 
-      <InvoiceModal restaurantName={restaurantName} bill={invoice} onClose={()=>setInvoice(null)}/>
+      <InvoiceModal restaurant={{name:restaurantName,address:profile?.address,gstin:profile?.gstin,phone}} bill={invoice} onClose={()=>setInvoice(null)}/>
     </div>
   )
 }
