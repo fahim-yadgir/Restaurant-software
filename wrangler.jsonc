@@ -13,6 +13,16 @@
     "run_worker_first": ["/api/*"]
   },
 
+  // Database (Cloudflare D1)
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "restrodesk",
+      "database_id": "831228d0-808f-4569-bac1-af1aedeb656c",
+      "migrations_dir": "server/db/migrations"
+    }
+  ],
+
   // Normal (non-secret) settings. Secrets are NOT written here.
   "vars": {
     "ADMIN_EMAIL": "admin@restrodesk.com",

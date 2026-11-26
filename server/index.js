@@ -1,6 +1,8 @@
 import { Hono } from 'hono'
 
 import { ApiError } from './utils/errors.js'
+import adminAuthRoutes from './routes/admin.auth.js'
+import adminRestaurantRoutes from './routes/admin.restaurants.js'
 
 const app = new Hono()
 
@@ -51,6 +53,10 @@ app.use('/api/*', async (c, next) => {
 
   await next()
 })
+
+// ---------- Routes ----------
+app.route('/api/admin', adminAuthRoutes) // POST /login, GET /me
+app.route('/api/admin/restaurants', adminRestaurantRoutes) // restaurants CRUD, renew, history
 
 // Any other /api/... URL
 app.notFound((c) =>

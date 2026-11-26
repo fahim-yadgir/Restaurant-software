@@ -29,3 +29,16 @@ export const toPayment = (p) => ({
   note: p.note,
   paidOn: p.paid_on,
 })
+// One row of a restaurant's plan history. amount / method come from the linked payment (if any).
+export const toSubscription = (s) => ({
+  id: s.id,
+  restaurantId: s.restaurant_id,
+  planType: s.plan_type,
+  durationDays: s.duration_days,
+  startsAt: s.starts_at,
+  endsAt: s.ends_at,
+  paymentId: s.payment_id,
+  createdAt: s.created_at,
+  amount: s.amount ?? null,
+  method: s.method ?? null,
+})
