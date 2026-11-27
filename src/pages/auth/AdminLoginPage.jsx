@@ -2,23 +2,27 @@ import { useState } from 'react'
 import { ShieldCheck, Utensils, LockKeyhole } from 'lucide-react'
 import Field from '@/components/ui/Field'
 import Button from '@/components/ui/Button'
-import { ADMIN_EMAIL, usingDefaultPassword, verifyAdminLogin } from '@/lib/adminAuth'
+import { adminLogin } from '@/lib/adminApi'
 
 export default function AdminLoginPage({ onLogin }) {
-  const isDefault = usingDefaultPassword()   // demo credentials are shown only until the password is changed
-  const [email, setEmail] = useState(ADMIN_EMAIL)
-  const [password, setPassword] = useState(isDefault ? 'demo123' : '')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const submit = async (event) => {
     event.preventDefault()
     setBusy(true)
-    const ok = await verifyAdminLogin(email, password)
-    setBusy(false)
-    if (!ok) { setError('Invalid platform admin email or password.'); return }
     setError('')
-    onLogin()
+
+    try {
+      await adminLogin(email, password)
+      onLogin()
+    } catch (err) {
+      setError(err.message || 'Could not sign in. Please try again.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   return <main className="grid min-h-screen bg-slate-50 lg:grid-cols-2">
@@ -34,7 +38,6 @@ export default function AdminLoginPage({ onLogin }) {
         <Field label="Password" type="password" value={password} onChange={setPassword} />
         {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
         <Button type="submit" disabled={busy} className="w-full py-3">{busy ? 'Checking…' : 'Sign in to Platform Admin'}</Button>
-        {isDefault && <div className="rounded-xl bg-blue-50 p-4 text-xs leading-5 text-blue-800"><b>Demo credentials</b><br/>{ADMIN_EMAIL}<br/>demo123<br/><br/>Change this password from Account &amp; security after signing in.</div>}
       </form>
     </section>
   </main>

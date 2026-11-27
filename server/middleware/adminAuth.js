@@ -3,7 +3,7 @@
 //   router.get('/restaurants', adminAuth, listRestaurants)
 //
 // It reads "Authorization: Bearer <token>", checks the signature and expiry,
-// makes sure the token was not signed out (revoked), and saves the token's
+// makes sure the token was not signed out (revoked) and is from the current password, and saves the token's
 // data in c.get('admin').
 
 import { unauthorized } from '../utils/errors.js'
@@ -20,12 +20,21 @@ export async function adminAuth(c, next) {
     throw unauthorized('Admin sign-in required. Please sign in again.')
   }
 
-  const revoked = await c.env.DB
-    .prepare('SELECT 1 AS found FROM revoked_tokens WHERE jti = ?')
-    .bind(payload.jti)
+  // One round trip: was this token signed out, and is it from the admin's current password?
+  const row = await c.env.DB
+    .prepare(
+      `SELECT (SELECT 1 FROM revoked_tokens WHERE jti = ?) AS revoked,
+              (SELECT password_changed_at FROM admins WHERE id = ?) AS pwv`
+    )
+    .bind(payload.jti, String(payload.sub || ''))
     .first()
 
-  if (revoked) throw unauthorized('You are signed out. Please sign in again.')
+  if (row?.revoked) throw unauthorized('You are signed out. Please sign in again.')
+
+  // The password was changed (or the account was reset) after this token was issued.
+  if (!row || row.pwv === null || row.pwv !== payload.pwv) {
+    throw unauthorized('Your sign-in is no longer valid. Please sign in again.')
+  }
 
   c.set('admin', payload)
 

@@ -4,8 +4,8 @@
 import { ApiError, badRequest, notFound } from '../utils/errors.js'
 import { hashPassword, randomPassword } from '../utils/password.js'
 import {
-  isEmail, isMobile, newId, normalizeEmail, normalizeMobile,
-  parseAmount, parseMethod, parsePlan, readJson,
+  isMobile, newId, normalizeMobile,
+  parseAmount, parseMethod, parseOptionalEmail, parsePlan, readJson,
 } from '../utils/validate.js'
 import { toRestaurant, toSubscription } from '../db/mappers.js'
 import { DAY_MS, planLabel, renewPlan, restaurantStatus } from '../services/plan.js'
@@ -17,28 +17,44 @@ const withStatus = (row) => {
   return { ...restaurant, status: restaurantStatus(restaurant) }
 }
 
-async function getRow(db, id) {
+// Deleted restaurants are hidden from every action unless includeDeleted is set.
+async function getRow(db, id, { includeDeleted = false } = {}) {
   const row = await db.prepare('SELECT * FROM restaurants WHERE id = ?').bind(id).first()
 
   if (!row) throw notFound('Restaurant not found.')
 
+  if (row.deleted_at && !includeDeleted) {
+    throw new ApiError(409, 'DELETED', 'This restaurant is deleted. Restore it first.')
+  }
+
   return row
 }
 
-// 409 when another restaurant already uses this email or mobile.
+// 409 when another restaurant already uses this mobile (or email, if one was given).
 async function assertUnique(db, { email, mobile, exceptId = '' }) {
   const dup = await db
-    .prepare('SELECT id, email FROM restaurants WHERE (email = ? OR mobile = ?) AND id != ?')
-    .bind(email, mobile, exceptId)
+    .prepare(
+      `SELECT mobile, deleted_at FROM restaurants
+        WHERE (mobile = ? OR (? IS NOT NULL AND email = ?)) AND id != ?`
+    )
+    .bind(mobile, email, email, exceptId)
     .first()
+
+  if (dup?.deleted_at) {
+    throw new ApiError(
+      409,
+      'DUPLICATE',
+      'This mobile or email belongs to a deleted restaurant. Restore it from Deleted restaurants, or delete it permanently first.'
+    )
+  }
 
   if (dup) {
     throw new ApiError(
       409,
       'DUPLICATE',
-      dup.email === email
-        ? 'A restaurant with this email is already registered.'
-        : 'A restaurant with this mobile number is already registered.'
+      dup.mobile === mobile
+        ? 'A restaurant with this mobile number is already registered.'
+        : 'A restaurant with this email is already registered.'
     )
   }
 }
@@ -61,18 +77,30 @@ const insertPayment = (db, p) =>
 
 // ---------- GET /api/admin/restaurants ----------
 export async function list(c) {
-  const { results } = await c.env.DB.prepare('SELECT * FROM restaurants ORDER BY created_at DESC').all()
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM restaurants WHERE deleted_at IS NULL ORDER BY created_at DESC')
+    .all()
+
+  return c.json({ restaurants: results.map(withStatus) })
+}
+
+// ---------- GET /api/admin/restaurants/deleted ----------
+// The "Deleted restaurants" page. Newest deleted first.
+export async function listDeleted(c) {
+  const { results } = await c.env.DB
+    .prepare('SELECT * FROM restaurants WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC')
+    .all()
 
   return c.json({ restaurants: results.map(withStatus) })
 }
 
 // ---------- GET /api/admin/restaurants/:id ----------
 export async function getOne(c) {
-  return c.json({ restaurant: withStatus(await getRow(c.env.DB, c.req.param('id'))) })
+  return c.json({ restaurant: withStatus(await getRow(c.env.DB, c.req.param('id'), { includeDeleted: true })) })
 }
 
 // ---------- POST /api/admin/restaurants ----------
-// body: { name, ownerName, mobile, email, password?, planType, durationDays, amount?, method? }
+// body: { name, ownerName, mobile, email?, password?, planType, durationDays, amount?, method? }
 // Leave password out and the server makes one and returns it ONCE in the response.
 export async function create(c) {
   const db = c.env.DB
@@ -81,12 +109,11 @@ export async function create(c) {
   const name = String(body.name || '').trim()
   const ownerName = String(body.ownerName || '').trim()
   const mobile = normalizeMobile(body.mobile)
-  const email = normalizeEmail(body.email)
+  const email = parseOptionalEmail(body.email)
 
   if (!name) throw badRequest('Enter the restaurant name.')
   if (!ownerName) throw badRequest('Enter the owner name.')
   if (!isMobile(mobile)) throw badRequest('Enter a valid 10-digit mobile number.')
-  if (!isEmail(email)) throw badRequest('Enter a valid email address.')
 
   const { planType, durationDays } = parsePlan(body.planType, body.durationDays)
   const amount = parseAmount(body.amount)
@@ -147,11 +174,10 @@ export async function update(c) {
   const name = body.name !== undefined ? String(body.name).trim() : old.name
   const ownerName = body.ownerName !== undefined ? String(body.ownerName).trim() : old.owner_name
   const mobile = body.mobile !== undefined ? normalizeMobile(body.mobile) : old.mobile
-  const email = body.email !== undefined ? normalizeEmail(body.email) : old.email
+  const email = body.email !== undefined ? parseOptionalEmail(body.email) : old.email
 
   if (!name || !ownerName) throw badRequest('Restaurant and owner names are required.')
   if (!isMobile(mobile)) throw badRequest('Enter a valid 10-digit mobile number.')
-  if (!isEmail(email)) throw badRequest('Enter a valid email address.')
 
   const { planType, durationDays } = parsePlan(
     body.planType ?? old.plan_type,
@@ -213,8 +239,8 @@ export async function renew(c) {
 
   const statements = [
     db
-      .prepare('UPDATE restaurants SET duration_days = ?, expires_at = ? WHERE id = ?')
-      .bind(next.durationDays, next.expiresAt, id),
+      .prepare('UPDATE restaurants SET duration_days = ?, expires_at = ?, renewed_at = ? WHERE id = ?')
+      .bind(next.durationDays, next.expiresAt, now, id),
     insertSubscription(db, {
       id: newId('sub'), restaurantId: id, planType: 'period', durationDays: days,
       startsAt: next.startsAt, endsAt: next.endsAt, paymentId, createdAt: now,
@@ -225,7 +251,7 @@ export async function renew(c) {
     statements.push(
       insertPayment(db, {
         id: paymentId, restaurantId: id, restaurantName: row.name, type: 'renewal',
-        plan: `${days} days`, amount, method, paidOn: now,
+        plan: planLabel('period', days), amount, method, paidOn: now,
       })
     )
   }
@@ -241,7 +267,7 @@ export async function subscriptions(c) {
   const db = c.env.DB
   const id = c.req.param('id')
 
-  await getRow(db, id)
+  await getRow(db, id, { includeDeleted: true })
 
   const { results } = await db
     .prepare(
@@ -278,7 +304,7 @@ export async function resetPassword(c) {
   const password = randomPassword(8)
 
   await c.env.DB
-    .prepare('UPDATE restaurants SET password_hash = ? WHERE id = ?')
+    .prepare('UPDATE restaurants SET password_hash = ?, must_change_password = 1 WHERE id = ?')
     .bind(await hashPassword(password, c.env), id)
     .run()
 
@@ -286,12 +312,88 @@ export async function resetPassword(c) {
 }
 
 // ---------- DELETE /api/admin/restaurants/:id ----------
-// Removes the account and its plan history. Payments stay, so revenue totals do not change.
+// Soft delete: the restaurant moves to "Deleted restaurants". Nothing is erased, and the
+// payments (income) stay exactly as they were. The owner can no longer sign in.
 export async function remove(c) {
   const db = c.env.DB
   const id = c.req.param('id')
 
   await getRow(db, id)
+  await db.prepare('UPDATE restaurants SET deleted_at = ? WHERE id = ?').bind(Date.now(), id).run()
+
+  return c.json({ ok: true })
+}
+
+// ---------- POST /api/admin/restaurants/:id/restore ----------
+// body (optional): { days, amount?, method? }
+//   no days  -> only brings the restaurant back, the plan stays as it was
+//   days     -> brings it back AND renews the plan by that many days (with the payment)
+export async function restore(c) {
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const raw = await c.req.json().catch(() => null)
+  const body = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const row = await getRow(db, id, { includeDeleted: true })
+
+  if (!row.deleted_at) throw badRequest('This restaurant is not deleted.')
+
+  const wantsRenewal = body.days !== undefined && body.days !== null && body.days !== '' && Number(body.days) !== 0
+
+  if (!wantsRenewal) {
+    await db.prepare('UPDATE restaurants SET deleted_at = NULL WHERE id = ?').bind(id).run()
+
+    return c.json({ restaurant: withStatus(await getRow(db, id)) })
+  }
+
+  if (row.plan_type === 'lifetime') {
+    throw badRequest('Lifetime plans never expire, so they do not need renewal.')
+  }
+
+  const days = Number(body.days)
+
+  if (!Number.isInteger(days) || days <= 0 || days > 3650) throw badRequest('Invalid renewal duration.')
+
+  const amount = parseAmount(body.amount)
+  const method = parseMethod(body.method)
+  const now = Date.now()
+  const next = renewPlan(row, days, now)
+  const paymentId = amount > 0 ? newId('pay') : null
+
+  const statements = [
+    db
+      .prepare('UPDATE restaurants SET deleted_at = NULL, duration_days = ?, expires_at = ?, renewed_at = ? WHERE id = ?')
+      .bind(next.durationDays, next.expiresAt, now, id),
+    insertSubscription(db, {
+      id: newId('sub'), restaurantId: id, planType: 'period', durationDays: days,
+      startsAt: next.startsAt, endsAt: next.endsAt, paymentId, createdAt: now,
+    }),
+  ]
+
+  if (paymentId) {
+    statements.push(
+      insertPayment(db, {
+        id: paymentId, restaurantId: id, restaurantName: row.name, type: 'renewal',
+        plan: planLabel('period', days), amount, method, paidOn: now,
+      })
+    )
+  }
+
+  await db.batch(statements)
+
+  return c.json({ restaurant: withStatus(await getRow(db, id)) })
+}
+
+// ---------- DELETE /api/admin/restaurants/:id/permanent ----------
+// Only for restaurants that are already deleted. Removes the account and its plan history for good.
+// Payments stay, so revenue totals never change.
+export async function removePermanently(c) {
+  const db = c.env.DB
+  const id = c.req.param('id')
+  const row = await getRow(db, id, { includeDeleted: true })
+
+  if (!row.deleted_at) {
+    throw badRequest('Delete the restaurant first. Only deleted restaurants can be removed permanently.')
+  }
 
   await db.batch([
     db.prepare('DELETE FROM subscriptions WHERE restaurant_id = ?').bind(id),

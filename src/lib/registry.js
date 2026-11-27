@@ -7,7 +7,7 @@ export const DAY_MS = 24 * 60 * 60 * 1000
 export const isLifetime = (item) => item?.planType === 'lifetime'
 
 export const planLabel = (item) =>
-  isLifetime(item) ? 'Lifetime' : `${item?.durationDays} days`
+  isLifetime(item) ? 'Lifetime' : `${item?.durationDays} ${Number(item?.durationDays) === 1 ? 'day' : 'days'}`
 
 const PASSWORD_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789'
 
@@ -58,6 +58,16 @@ export async function hashPassword(password, salt) {
   return `x${h.toString(16)}`
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+// Plan days typed by the admin: a whole number from 1 to 3650.
+export const isValidPlanDays = (value) => {
+  const days = Number(value)
+
+  return Number.isInteger(days) && days >= 1 && days <= 3650
+}
+
+// Email is optional. registry = the restaurants already registered (from the server).
 export function validateRegistration(form, registry) {
   if (!form.name.trim()) return 'Enter the restaurant name.'
 
@@ -67,12 +77,14 @@ export function validateRegistration(form, registry) {
     return 'Enter a valid 10-digit mobile number.'
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(form.email.trim())) {
-    return 'Enter a valid email address.'
+  const email = normalizeEmail(form.email)
+
+  if (email && !EMAIL_PATTERN.test(email)) {
+    return 'Enter a valid email address, or leave it empty.'
   }
 
-  if (form.days !== 'lifetime' && !Number(form.days)) {
-    return 'Choose a subscription duration.'
+  if (form.days !== 'lifetime' && !isValidPlanDays(form.days)) {
+    return 'Enter plan days between 1 and 3650, or choose Lifetime.'
   }
 
   if (
@@ -84,13 +96,12 @@ export function validateRegistration(form, registry) {
   }
 
   if ((form.password || '').length < 6) {
-    return 'Owner password must be at least 6 characters.'
+    return 'Temporary password must be at least 6 characters.'
   }
 
-  const email = normalizeEmail(form.email)
   const mobile = normalizeMobile(form.mobile)
 
-  if (registry.some((r) => normalizeEmail(r.email) === email)) {
+  if (email && registry.some((r) => normalizeEmail(r.email) === email)) {
     return 'A restaurant with this email is already registered.'
   }
 

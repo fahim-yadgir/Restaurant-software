@@ -1,17 +1,24 @@
-import {useState} from 'react'
-import {LogOut,KeyRound,ShieldCheck,TriangleAlert} from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { LogOut, KeyRound, ShieldCheck } from 'lucide-react'
+
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import ChangePasswordForm from '@/components/account/ChangePasswordForm'
-import {ADMIN_EMAIL,changeAdminPassword,usingDefaultPassword} from '@/lib/adminAuth'
 
-const card='rounded-2xl border border-slate-200 bg-white p-5'
+import { adminChangePassword, adminMe } from '@/lib/adminApi'
+
+const card = 'rounded-2xl border border-slate-200 bg-white p-5'
 
 // Super admin account page: profile, change password and sign out.
-export default function AccountPage({onLogout}) {
-  const [open,setOpen]=useState(false)
-  const [,refresh]=useState(0)
-  const isDefault=usingDefaultPassword()
+export default function AccountPage({ onLogout }) {
+  const [open, setOpen] = useState(false)
+  const [email, setEmail] = useState('')
+
+  useEffect(() => {
+    adminMe()
+      .then((data) => setEmail(data.admin.email))
+      .catch(() => {})
+  }, [])
 
   return (
     <div className="max-w-2xl space-y-5">
@@ -22,10 +29,13 @@ export default function AccountPage({onLogout}) {
 
       <div className={card}>
         <div className="flex items-center gap-4">
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-orange-50 text-orange-600"><ShieldCheck size={26}/></div>
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-orange-50 text-orange-600">
+            <ShieldCheck size={26} />
+          </div>
+
           <div>
             <div className="font-bold">Super admin</div>
-            <div className="text-sm text-slate-500">{ADMIN_EMAIL}</div>
+            <div className="text-sm text-slate-500">{email || '…'}</div>
           </div>
         </div>
       </div>
@@ -33,34 +43,44 @@ export default function AccountPage({onLogout}) {
       <div className={card}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 font-bold"><KeyRound size={17}/> Password</div>
-            <p className="mt-1 text-sm text-slate-500">Choose a strong password that only you know.</p>
+            <div className="flex items-center gap-2 font-bold">
+              <KeyRound size={17} /> Password
+            </div>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Use a strong password (at least 8 characters) that only you know. Changing it signs out every other session.
+            </p>
           </div>
-          <Button onClick={()=>setOpen(true)}>Change password</Button>
+
+          <Button onClick={() => setOpen(true)}>Change password</Button>
         </div>
-        {isDefault&&(
-          <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <TriangleAlert className="mt-0.5 shrink-0" size={17}/>
-            <span>You are still using the default demo password. Please change it now.</span>
-          </div>
-        )}
       </div>
 
       <div className={card}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2 font-bold"><LogOut size={17}/> Sign out</div>
+            <div className="flex items-center gap-2 font-bold">
+              <LogOut size={17} /> Sign out
+            </div>
+
             <p className="mt-1 text-sm text-slate-500">End this admin session on this browser.</p>
           </div>
+
           <Button variant="secondary" onClick={onLogout}>Sign out</Button>
         </div>
       </div>
 
-      <p className="text-xs leading-5 text-slate-500">Demo note: the admin password is saved (as a salted hash) in this browser only. For a real product, move admin sign-in to a secure server.</p>
+      <p className="text-xs leading-5 text-slate-500">
+        After 5 wrong password attempts the sign-in page is locked for 15 minutes.
+      </p>
 
-      {open&&(
-        <Modal title="Change password" subtitle="Super admin" size="sm" onClose={()=>setOpen(false)}>
-          <ChangePasswordForm onSubmit={changeAdminPassword} onDone={()=>{setOpen(false);refresh(n=>n+1)}}/>
+      {open && (
+        <Modal title="Change password" subtitle="Super admin" size="sm" onClose={() => setOpen(false)}>
+          <ChangePasswordForm
+            minLength={8}
+            onSubmit={adminChangePassword}
+            onDone={() => setOpen(false)}
+          />
         </Modal>
       )}
     </div>

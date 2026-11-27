@@ -3,7 +3,7 @@
 export const DAY_MS = 24 * 60 * 60 * 1000
 
 export const planLabel = (planType, durationDays) =>
-  planType === 'lifetime' ? 'Lifetime' : `${durationDays} days`
+  planType === 'lifetime' ? 'Lifetime' : `${durationDays} ${durationDays === 1 ? 'day' : 'days'}`
 
 // 'pending' (owner has not logged in yet) | 'active' | 'expiring' (7 days or less) | 'expired'
 // restaurant = the object from toRestaurant()

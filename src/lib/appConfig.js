@@ -23,6 +23,17 @@ export const PLAN_OPTIONS = [
   { label: 'Lifetime (permanent)', days: 'lifetime' },
 ]
 
+// Plan choices in the admin forms. Any number of days (1-3650) can also be typed as a custom plan.
+export const PLAN_PRESETS = [
+  { label: '1 day', days: 1 },
+  { label: '7 days (trial)', days: 7 },
+  { label: '1 month (30 days)', days: 30 },
+  { label: '3 months (90 days)', days: 90 },
+  { label: '6 months (180 days)', days: 180 },
+  { label: '12 months (365 days)', days: 365 },
+  { label: 'Lifetime (permanent)', days: 'lifetime' },
+]
+
 // Software name printed at the bottom of every bill.
 export const APP_NAME = 'RestroDesk POS'
 

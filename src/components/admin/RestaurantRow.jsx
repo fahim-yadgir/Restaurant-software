@@ -26,7 +26,7 @@ export default function RestaurantRow({ r, now, onManage }) {
       <td className="px-5 py-4">
         <div>{r.ownerName}</div>
         <div className="text-xs text-slate-500">{r.mobile}</div>
-        <div className="text-xs text-slate-500">{r.email}</div>
+        {r.email && <div className="text-xs text-slate-500">{r.email}</div>}
       </td>
 
       <td className="px-5 py-4">

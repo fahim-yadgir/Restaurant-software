@@ -104,3 +104,64 @@ export function groupTotals(payments, field) {
 
   return Object.entries(totals).sort((a, b) => b[1] - a[1])
 }
+
+// ---------------------------------------------------------------
+// Helpers for the grouped rows the server sends: { ym, type, method, plan, total, count }
+// ---------------------------------------------------------------
+const pad2 = (n) => String(n).padStart(2, '0')
+
+export const ymOf = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`
+
+export function ymInRange(ym, range, now = Date.now()) {
+  const today = new Date(now)
+
+  if (range === 'month') return ym === ymOf(today)
+  if (range === 'lastMonth') return ym === ymOf(new Date(today.getFullYear(), today.getMonth() - 1, 1))
+  if (range === 'year') return ym.startsWith(`${today.getFullYear()}-`)
+
+  return true
+}
+
+export const rowsInRange = (rows, range, now) => rows.filter((r) => ymInRange(r.ym, range, now))
+
+export const sumRows = (rows) => rows.reduce((t, r) => t + r.total, 0)
+
+export const countRows = (rows) => rows.reduce((t, r) => t + r.count, 0)
+
+// Last `count` months (oldest first), including months with no payments.
+export function monthlyFromRows(rows, now = Date.now(), count = 12) {
+  const today = new Date(now)
+
+  return Array.from({ length: count }, (_, i) => {
+    const date = new Date(today.getFullYear(), today.getMonth() - (count - 1 - i), 1)
+    const key = ymOf(date)
+
+    return {
+      key,
+      label: date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+      total: sumRows(rows.filter((r) => r.ym === key)),
+      current: i === count - 1,
+    }
+  })
+}
+
+// [[label, total], ...] highest first. Beyond `limit` groups the rest are merged into one bar.
+export function groupRows(rows, field, { labels = {}, limit = 8, otherLabel = 'Others' } = {}) {
+  const totals = {}
+
+  for (const r of rows) {
+    const key = r[field] || 'Other'
+
+    totals[key] = (totals[key] || 0) + r.total
+  }
+
+  const sorted = Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, total]) => [labels[key] || key, total])
+
+  if (sorted.length <= limit) return sorted
+
+  const rest = sorted.slice(limit - 1).reduce((t, [, total]) => t + total, 0)
+
+  return [...sorted.slice(0, limit - 1), [otherLabel, rest]]
+}

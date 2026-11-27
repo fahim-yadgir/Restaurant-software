@@ -6,7 +6,16 @@ export const PAYMENT_METHODS = ['UPI', 'Cash', 'Bank transfer', 'Other']
 
 export const normalizeMobile = (value) => String(value || '').replace(/\D/g, '').slice(-10)
 export const normalizeEmail = (value) => String(value || '').trim().toLowerCase()
+// Email is optional: empty -> null, otherwise it must look like an email.
+export function parseOptionalEmail(value) {
+  const email = normalizeEmail(value)
 
+  if (!email) return null
+
+  if (!isEmail(email)) throw badRequest('Enter a valid email address, or leave it empty.')
+
+  return email
+}
 export const isMobile = (mobile) => /^[6-9]\d{9}$/.test(mobile)
 export const isEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)
 

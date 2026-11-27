@@ -14,6 +14,7 @@ import {
   UserCog,
   CalendarClock,
   IndianRupee,
+  Trash2,
 } from 'lucide-react'
 
 import { EXPIRY_WARNING_DAYS } from '@/lib/appConfig'
@@ -33,6 +34,7 @@ const links = [
 const adminLinks = [
   ['Admin Overview', 'admin', ShieldCheck],
   ['Restaurants & Plans', 'adminPlans', Store],
+  ['Deleted Restaurants', 'adminDeleted', Trash2],
   ['Revenue', 'adminRevenue', IndianRupee],
   ['Account & Security', 'adminAccount', UserCog],
 ]

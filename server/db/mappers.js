@@ -15,6 +15,8 @@ export const toRestaurant = (r) => ({
   deviceId: r.device_id,
   deviceBoundAt: r.device_bound_at,
   lastSeenAt: r.last_seen_at,
+  renewedAt: r.renewed_at,
+  deletedAt: r.deleted_at,
   // password_hash is NEVER sent to the browser from here
 })
 

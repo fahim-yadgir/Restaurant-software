@@ -14,6 +14,7 @@ const titles = {
   settings: 'Restaurant Settings',
   admin: 'Admin Overview',
   adminPlans: 'Restaurants & Subscriptions',
+  adminDeleted: 'Deleted Restaurants',
   adminRevenue: 'Revenue',
   adminAccount: 'Account & Security',
 }

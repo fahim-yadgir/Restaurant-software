@@ -1,6 +1,7 @@
 // Run once:  npm run keys
 // Creates the license signing key pair and a JWT secret, and prints how to use them.
 import { webcrypto as crypto } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 
 const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, [
   'sign',
@@ -14,6 +15,15 @@ for (const jwk of [privateJwk, publicJwk]) {
   delete jwk.key_ops
   delete jwk.ext
 }
+
+// The app checks licenses with the PUBLIC key, so it is written straight into the React code.
+writeFileSync(
+  new URL('../src/lib/licenseKey.js', import.meta.url),
+  `// Public license key (created by "npm run keys"). Safe to commit: it can only VERIFY licenses.
+// It must be the pair of LICENSE_PRIVATE_KEY on the server. Run "npm run keys" again to replace both.
+export const LICENSE_PUBLIC_KEY = ${JSON.stringify(publicJwk)}
+`
+)
 
 const jwtSecret = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString('base64url')
 
@@ -34,7 +44,7 @@ npx wrangler secret put JWT_SECRET             (paste the JWT_SECRET value above
 npx wrangler secret put LICENSE_PRIVATE_KEY    (paste the one-line JSON above)
 
 =====================================================================
- 3) PUBLIC KEY  ->  safe to put inside the React app (it can only verify)
+ 3) PUBLIC KEY  ->  already written to src/lib/licenseKey.js (nothing to do)
 =====================================================================
 ${JSON.stringify(publicJwk)}
 

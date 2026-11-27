@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 
@@ -7,7 +6,7 @@ import Button from '@/components/ui/Button'
 
 import { notifySuccess, notifyError } from '@/lib/toast'
 
-export default function ChangePasswordForm({ onSubmit, onDone }) {
+export default function ChangePasswordForm({ onSubmit, onDone, minLength = 6 }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -23,8 +22,8 @@ export default function ChangePasswordForm({ onSubmit, onDone }) {
       return
     }
 
-    if (next.length < 6) {
-      setError('New password must be at least 6 characters.')
+    if (next.length < minLength) {
+      setError(`New password must be at least ${minLength} characters.`)
       return
     }
 
@@ -97,7 +96,7 @@ export default function ChangePasswordForm({ onSubmit, onDone }) {
       />
 
       <Field
-        label="New password (min 6 characters)"
+        label={`New password (min ${minLength} characters)`}
         type="password"
         value={next}
         onChange={setNext}

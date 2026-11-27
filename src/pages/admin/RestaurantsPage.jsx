@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Plus,
   Pencil,
@@ -14,17 +14,13 @@ import Modal from '@/components/ui/Modal'
 import CopyButton from '@/components/ui/CopyButton'
 import RestaurantRow from '@/components/admin/RestaurantRow'
 
-import {
-  DURATION_OPTIONS,
-  PLAN_OPTIONS,
-  PLAN_PRICES,
-  defaultPrice,
-} from '@/lib/appConfig'
+import { PLAN_PRESETS } from '@/lib/appConfig'
 
 import { PAYMENT_METHODS } from '@/lib/revenue'
 
 import {
   generatePassword,
+  isValidPlanDays,
   validateRegistration,
   normalizeEmail,
   normalizeMobile,
@@ -46,11 +42,75 @@ const emptyForm = () => ({
   ownerName: '',
   mobile: '',
   email: '',
-  days: '90',
+  days: '30',
   password: generatePassword(),
-  amount: String(PLAN_PRICES[90]),
+  amount: '',
   method: 'UPI',
 })
+
+// Plan picker: ready-made plans, a custom number of days (1-3650) or Lifetime.
+// value is 'lifetime' or the number of days as text.
+function PlanField({ value, onChange }) {
+  const isPreset = PLAN_PRESETS.some((option) => String(option.days) === String(value))
+  const [custom, setCustom] = useState(!isPreset)
+
+  const timed = PLAN_PRESETS.filter((option) => option.days !== 'lifetime')
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-semibold text-slate-600">Plan</span>
+
+      <select
+        value={custom ? 'custom' : String(value)}
+        onChange={(e) => {
+          if (e.target.value === 'custom') {
+            setCustom(true)
+            onChange('')
+          } else {
+            setCustom(false)
+            onChange(e.target.value)
+          }
+        }}
+        className={selectClass}
+      >
+        {timed.map((option) => (
+          <option key={option.days} value={option.days}>{option.label}</option>
+        ))}
+        <option value="custom">Custom days…</option>
+        <option value="lifetime">Lifetime (permanent)</option>
+      </select>
+
+      {custom && (
+        <input
+          type="number"
+          min="1"
+          max="3650"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Number of days (1 to 3650)"
+          className={selectClass}
+        />
+      )}
+    </div>
+  )
+}
+
+const PAGE_SIZE = 15
+
+const VIEWS = [
+  ['new', 'Newest first'],
+  ['old', 'Oldest first'],
+  ['renewed', 'Recently renewed'],
+  ['expiring', 'Near expiring (7 days or less)'],
+  ['expired', 'Expired'],
+]
+
+// Page numbers to show: always the first and last, and a few around the current page.
+function pageNumbers(current, total) {
+  const wanted = new Set([1, total, current - 1, current, current + 1])
+
+  return [...wanted].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b)
+}
 
 const selectClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm'
@@ -61,7 +121,7 @@ function shareText(record, password) {
     `Restaurant: ${record.name}`,
     `Owner: ${record.ownerName}`,
     `Mobile: ${record.mobile}`,
-    `Email: ${record.email}`,
+    ...(record.email ? [`Email: ${record.email}`] : []),
     `Plan: ${planLabel(record)}`,
     `Password: ${password}`,
     'Sign in with your email or mobile number. The first sign-in needs internet and links the app to that computer (one device per account).',
@@ -86,10 +146,49 @@ export default function RestaurantsPage({
   const [selected, setSelected] = useState(null)
   const [editMode, setEditMode] = useState(false)
   const [renewDays, setRenewDays] = useState('30')
-  const [renewAmount, setRenewAmount] = useState(String(PLAN_PRICES[30]))
+  const [renewAmount, setRenewAmount] = useState('')
   const [renewMethod, setRenewMethod] = useState('UPI')
 
   const [created, setCreated] = useState(null)
+
+  // Search, view and pages work on the list already loaded in the browser (no extra database reads).
+  const [search, setSearch] = useState('')
+  const [view, setView] = useState('new')
+  const [page, setPage] = useState(1)
+
+  const minute = Math.floor(now / 60000)
+
+  const filtered = useMemo(() => {
+    const at = minute * 60000
+    const q = search.trim().toLowerCase()
+    const digits = q.replace(/\D/g, '')
+
+    let rows = registry.filter(
+      (r) =>
+        !q ||
+        [r.name, r.ownerName, r.email].some((v) => String(v || '').toLowerCase().includes(q)) ||
+        (digits && String(r.mobile || '').includes(digits))
+    )
+
+    if (view === 'renewed') rows = rows.filter((r) => r.renewedAt)
+    if (view === 'expiring') rows = rows.filter((r) => getRestaurantStatus(r, at) === 'expiring')
+    if (view === 'expired') rows = rows.filter((r) => getRestaurantStatus(r, at) === 'expired')
+
+    const order = {
+      new: (a, b) => b.createdAt - a.createdAt,
+      old: (a, b) => a.createdAt - b.createdAt,
+      renewed: (a, b) => b.renewedAt - a.renewedAt,
+      expiring: (a, b) => a.expiresAt - b.expiresAt,
+      expired: (a, b) => b.expiresAt - a.expiresAt,
+    }[view]
+
+    return [...rows].sort(order)
+  }, [registry, search, view, minute])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const firstIndex = (currentPage - 1) * PAGE_SIZE
+  const pageRows = filtered.slice(firstIndex, firstIndex + PAGE_SIZE)
 
   const set = (key) => (value) =>
     setForm((old) => ({ ...old, [key]: value }))
@@ -104,7 +203,7 @@ export default function RestaurantsPage({
     setSelected(restaurant)
     setEditMode(false)
     setRenewDays('30')
-    setRenewAmount(String(PLAN_PRICES[30]))
+    setRenewAmount('')
     setRenewMethod('UPI')
     setError('')
   }
@@ -187,15 +286,15 @@ export default function RestaurantsPage({
       return
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      const message = 'Enter a valid email address.'
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+      const message = 'Enter a valid email address, or leave it empty.'
       setError(message)
       notifyError(message)
       return
     }
 
-    if (!lifetime && (!Number.isFinite(durationDays) || durationDays <= 0)) {
-      const message = 'Select a valid plan.'
+    if (!lifetime && !isValidPlanDays(durationDays)) {
+      const message = 'Enter plan days between 1 and 3650, or choose Lifetime.'
       setError(message)
       notifyError(message)
       return
@@ -204,7 +303,7 @@ export default function RestaurantsPage({
     const duplicate = registry.find(
       (r) =>
         r.id !== selected.id &&
-        (r.email === email || r.mobile === mobile)
+        ((email && r.email === email) || r.mobile === mobile)
     )
 
     if (duplicate) {
@@ -248,8 +347,8 @@ export default function RestaurantsPage({
 
     const days = Number(renewDays)
 
-    if (!Number.isFinite(days) || days <= 0) {
-      notifyError('Select a valid renewal duration.')
+    if (!Number.isInteger(days) || days <= 0 || days > 3650) {
+      notifyError('Enter renewal days between 1 and 3650.')
       return
     }
 
@@ -332,12 +431,19 @@ export default function RestaurantsPage({
   const handleDelete = async () => {
     if (!selected || busy) return
 
+    const confirmed = await notifyConfirm(
+      'The restaurant moves to Deleted restaurants and its owner can no longer sign in. Its payments stay in Revenue, and you can restore it later.',
+      'Delete this restaurant?'
+    )
+
+    if (!confirmed) return
+
     try {
       setBusy(true)
 
       await onDelete(selected.id)
 
-      notifySuccess('Restaurant deleted successfully!')
+      notifySuccess('Restaurant moved to Deleted restaurants.')
 
       closeManage()
     } catch (err) {
@@ -392,6 +498,37 @@ export default function RestaurantsPage({
         </Button>
       </div>
 
+      {/* Search + view */}
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+          placeholder="Search name, owner, mobile or email"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100 sm:w-80"
+        />
+
+        <select
+          value={view}
+          onChange={(e) => {
+            setView(e.target.value)
+            setPage(1)
+          }}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+        >
+          {VIEWS.map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+
+        <span className="text-xs text-slate-500">
+          {filtered.length} of {registry.length} restaurants
+        </span>
+      </div>
+
       {/* Restaurants table */}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="w-full min-w-[980px] text-left text-sm">
@@ -414,7 +551,7 @@ export default function RestaurantsPage({
           </thead>
 
           <tbody>
-            {registry.map((restaurant) => (
+            {pageRows.map((restaurant) => (
               <RestaurantRow
                 key={restaurant.id}
                 r={restaurant}
@@ -423,19 +560,68 @@ export default function RestaurantsPage({
               />
             ))}
 
-            {registry.length === 0 && (
+            {filtered.length === 0 && (
               <tr>
                 <td
                   colSpan={7}
                   className="px-5 py-10 text-center text-slate-500"
                 >
-                  No restaurants registered yet.
+                  {registry.length === 0
+                    ? 'No restaurants registered yet.'
+                    : 'No restaurants match this search or view.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {filtered.length > PAGE_SIZE && (
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="text-xs text-slate-500">
+            Showing {firstIndex + 1}–{Math.min(firstIndex + PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="secondary"
+              onClick={() => setPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="!px-3 !py-1.5 text-xs"
+            >
+              Previous
+            </Button>
+
+            {pageNumbers(currentPage, totalPages).map((n, i, all) => (
+              <span key={n} className="flex items-center gap-1">
+                {i > 0 && n - all[i - 1] > 1 && <span className="px-1 text-slate-400">…</span>}
+
+                <button
+                  type="button"
+                  onClick={() => setPage(n)}
+                  className={`h-8 min-w-8 rounded-lg px-2 text-xs font-semibold ${
+                    n === currentPage
+                      ? 'bg-orange-500 text-white'
+                      : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {n}
+                </button>
+              </span>
+            ))}
+
+            <Button
+              variant="secondary"
+              onClick={() => setPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="!px-3 !py-1.5 text-xs"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Management modal */}
       {current && (
@@ -517,33 +703,22 @@ export default function RestaurantsPage({
                 </h3>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={renewDays}
-                    onChange={(e) => {
-                      setRenewDays(e.target.value)
-                      setRenewAmount(String(defaultPrice(e.target.value)))
-                    }}
-                    disabled={busy}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
-                  >
-                    {DURATION_OPTIONS
-                      .filter((option) => option.days > 7)
-                      .map((option) => (
-                        <option
-                          key={option.days}
-                          value={option.days}
-                        >
-                          +{option.days} days
-                        </option>
-                      ))}
-                  </select>
+                  <div className="w-32">
+                    <Field
+                      label=""
+                      value={renewDays}
+                      onChange={setRenewDays}
+                      placeholder="Days to add"
+                      inputMode="numeric"
+                    />
+                  </div>
 
                   <div className="w-36">
                     <Field
                       label=""
                       value={renewAmount}
                       onChange={setRenewAmount}
-                      placeholder="Amount ₹"
+                      placeholder="Amount ₹ (any)"
                       inputMode="decimal"
                     />
                   </div>
@@ -637,36 +812,14 @@ export default function RestaurantsPage({
               />
 
               <Field
-                label="Email"
+                label="Email (optional)"
                 value={form.email}
                 onChange={set('email')}
                 placeholder="owner@example.com"
                 type="email"
               />
 
-              <label className="block space-y-1.5">
-                <span className="text-xs font-semibold text-slate-600">
-                  Plan
-                </span>
-
-                <select
-                  value={form.days}
-                  onChange={(e) => {
-                    set('days')(e.target.value)
-                    set('amount')(String(defaultPrice(e.target.value)))
-                  }}
-                  className={selectClass}
-                >
-                  {PLAN_OPTIONS.map((option) => (
-                    <option
-                      key={option.days}
-                      value={option.days}
-                    >
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <PlanField value={form.days} onChange={set('days')} />
 
               <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 The linked device stays unchanged. Use Reset password or
@@ -735,39 +888,17 @@ export default function RestaurantsPage({
             />
 
             <Field
-              label="Email"
+              label="Email (optional)"
               value={form.email}
               onChange={set('email')}
               placeholder="owner@example.com"
               type="email"
             />
 
-            <label className="block space-y-1.5">
-              <span className="text-xs font-semibold text-slate-600">
-                Plan
-              </span>
-
-              <select
-                value={form.days}
-                onChange={(e) => {
-                    set('days')(e.target.value)
-                    set('amount')(String(defaultPrice(e.target.value)))
-                  }}
-                className={selectClass}
-              >
-                {PLAN_OPTIONS.map((option) => (
-                  <option
-                    key={option.days}
-                    value={option.days}
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <PlanField value={form.days} onChange={set('days')} />
 
             <Field
-              label="Owner login password"
+              label="Temporary password"
               value={form.password}
               onChange={set('password')}
               placeholder="Minimum 6 characters"
@@ -837,12 +968,14 @@ export default function RestaurantsPage({
                 </div>
 
                 <div className="break-all font-semibold">
-                  {created.record.email}
+                  {created.record.email || created.record.mobile}
                 </div>
 
-                <div className="text-xs text-slate-500">
-                  or {created.record.mobile}
-                </div>
+                {created.record.email && (
+                  <div className="text-xs text-slate-500">
+                    or {created.record.mobile}
+                  </div>
+                )}
               </div>
 
               <div>

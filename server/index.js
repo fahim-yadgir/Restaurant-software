@@ -1,8 +1,11 @@
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 
 import { ApiError } from './utils/errors.js'
 import adminAuthRoutes from './routes/admin.auth.js'
 import adminRestaurantRoutes from './routes/admin.restaurants.js'
+import adminRevenueRoutes from './routes/admin.revenue.js'
+import ownerRoutes from './routes/owner.js'
 
 const app = new Hono()
 
@@ -37,6 +40,12 @@ app.get('/api/health', async (c) => {
   })
 })
 
+// The Windows app (Electron) is not served from this domain, so the browser rules (CORS) must allow it.
+// Only the owner calls are opened; they carry no cookies, and every one needs a valid license or password.
+for (const pattern of ['/api/auth/*', '/api/license/*', '/api/owner/*']) {
+  app.use(pattern, cors({ origin: '*', allowMethods: ['POST', 'OPTIONS'], allowHeaders: ['Content-Type'], maxAge: 86400 }))
+}
+
 // Stop early with a clear message if a secret was forgotten.
 app.use('/api/*', async (c, next) => {
   const missing = REQUIRED_SECRETS.filter((name) => !c.env[name])
@@ -57,6 +66,8 @@ app.use('/api/*', async (c, next) => {
 // ---------- Routes ----------
 app.route('/api/admin', adminAuthRoutes) // POST /login, GET /me
 app.route('/api/admin/restaurants', adminRestaurantRoutes) // restaurants CRUD, renew, history
+app.route('/api/admin', adminRevenueRoutes) // GET /revenue, POST /payments
+app.route('/api', ownerRoutes) // owner: POST /auth/owner/login, /license/refresh, /owner/change-password
 
 // Any other /api/... URL
 app.notFound((c) =>
